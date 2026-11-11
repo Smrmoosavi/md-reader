@@ -116,3 +116,21 @@ git remote add origin https://github.com/<user>/<repo>.git
 git branch -M main
 git push -u origin main
 ```
+
+## انتشار خودکار با GitHub Actions
+
+Workflow در `.github/workflows/release.yml` با هر تگ اجرا می‌شود و برای هر سه سیستم‌عامل خروجی مستقل می‌سازد:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+نتیجه در صفحه‌ی **Releases** همان تگ قابل دانلود است:
+
+- `MdReader-win-x64.zip`
+- `MdReader-linux-x64.tar.gz`
+- `MdReader-osx-arm64.tar.gz` (مک با پردازنده‌ی Apple Silicon)
+- `MdReader-osx-x64.tar.gz` (مک با پردازنده‌ی Intel)
+
+این نسخه‌ها self-contained هستند و به نصب .NET روی سیستم مقصد نیازی ندارند. اجرای دستی هم از **Actions → Release → Run workflow** ممکن است (بدون ساخت Release، فقط artifact).

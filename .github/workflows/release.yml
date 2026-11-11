@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            archive: MdReader-win-x64.zip
+          - os: ubuntu-latest
+            rid: linux-x64
+            archive: MdReader-linux-x64.tar.gz
+          - os: macos-latest
+            rid: osx-arm64
+            archive: MdReader-osx-arm64.tar.gz
+          - os: macos-latest
+            rid: osx-x64
+            archive: MdReader-osx-x64.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish
+        run: >
+          dotnet publish MdReader.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -o out/${{ matrix.rid }}
+
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path out/${{ matrix.rid }}/* -DestinationPath ${{ matrix.archive }}
+
+      - name: Archive (macOS and Linux)
+        if: runner.os != 'Windows'
+        run: tar -czf ${{ matrix.archive }} -C out/${{ matrix.rid }} .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MdReader-${{ matrix.rid }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive }}
+          generate_release_notes: true
