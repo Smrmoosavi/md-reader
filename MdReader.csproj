@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MdReader</RootNamespace>
+    <AssemblyName>MdReader</AssemblyName>
+    <ApplicationIcon>assets\MdReader.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Installer/ is a separate Windows-only WPF project inside this folder; keep it out of the app build. -->
+    <Compile Remove="Installer/**" />
+    <AvaloniaXaml Remove="Installer/**" />
+    <Resource Remove="Installer/**" />
+    <EmbeddedResource Remove="Installer/**" />
+    <None Remove="Installer/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageReference Include="Markdig" Version="1.6.0" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

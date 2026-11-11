@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MdReaderSetup</AssemblyName>
+    <RootNamespace>MdReaderSetup</RootNamespace>
+    <ApplicationIcon>..\assets\MdReader.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The published app is zipped into payload.zip by build-installer.ps1 and embedded here. -->
+    <None Remove="payload\**" />
+    <None Remove="payload.zip" />
+    <EmbeddedResource Include="payload.zip" Condition="Exists('payload.zip')" LogicalName="MdReaderSetup.payload.zip" />
+  </ItemGroup>
+
+</Project>

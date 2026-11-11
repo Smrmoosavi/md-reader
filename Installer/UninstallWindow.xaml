@@ -1,0 +1,57 @@
+<Window x:Class="MdReaderSetup.UninstallWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="حذف MD Reader"
+        Width="520" Height="300"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFFFFF"
+        FontFamily="Segoe UI, Tahoma"
+        FontSize="13">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="MutedBrush" Color="#6B7580" />
+    </Window.Resources>
+
+    <Grid FlowDirection="RightToLeft" Margin="28,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock x:Name="TitleText" Text="MD Reader حذف شود؟" FontSize="20" FontWeight="SemiBold"
+                       Foreground="#1F2328" />
+            <TextBlock x:Name="DirText" Margin="0,8,0,0" Foreground="{StaticResource MutedBrush}"
+                       FlowDirection="LeftToRight" TextWrapping="Wrap" />
+            <TextBlock Text="میانبرها، ارتباط فایل‌های Markdown و همه‌ی فایل‌های برنامه پاک می‌شوند."
+                       Margin="0,10,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left">
+            <Button x:Name="RemoveButton" Content="حذف" IsDefault="True" Click="Remove_Click"
+                    Background="#D92D20" Foreground="White" BorderThickness="0" Padding="24,8" Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#B42318" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+            <Button x:Name="CancelButton" Content="انصراف" IsCancel="True" Click="Cancel_Click"
+                    Background="#FFFFFF" BorderBrush="#D5DCE3" BorderThickness="1" Padding="18,7"
+                    Margin="8,0,0,0" Cursor="Hand" />
+        </StackPanel>
+    </Grid>
+</Window>

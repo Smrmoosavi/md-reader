@@ -1,0 +1,100 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MdReader.MainWindow"
+        Title="MD Reader"
+        Width="1080" Height="760" MinWidth="720" MinHeight="440"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFFFFF"
+        FontSize="13">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <Border Grid.Row="0"
+                Background="#F6F8FA"
+                BorderBrush="#E3E8EE"
+                BorderThickness="0,0,0,1"
+                Padding="10,10,10,4">
+            <WrapPanel Orientation="Horizontal" FlowDirection="RightToLeft">
+                <Button x:Name="OpenButton"
+                        Classes="tool"
+                        Content="باز کردن فایل"
+                        Click="OpenButton_Click" />
+                <Button x:Name="ReloadButton"
+                        Classes="tool"
+                        Content="بازخوانی"
+                        Click="ReloadButton_Click"
+                        IsEnabled="False" />
+
+                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="#E3E8EE" VerticalAlignment="Center" />
+
+                <CheckBox x:Name="RtlCheckBox"
+                          Content="راست به چپ (RTL)"
+                          VerticalAlignment="Center"
+                          Margin="0,0,16,6"
+                          IsCheckedChanged="RtlCheckBox_Changed" />
+
+                <TextBlock Text="فونت" Classes="label" />
+                <ComboBox x:Name="FontCombo"
+                          Width="200"
+                          Margin="0,0,6,6"
+                          MinHeight="30"
+                          VerticalAlignment="Center"
+                          SelectionChanged="FontCombo_SelectionChanged">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontFamily="{Binding}" FontSize="14" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Text="اندازه" Classes="label" />
+                <ComboBox x:Name="SizeCombo"
+                          Width="72"
+                          Margin="0,0,6,6"
+                          MinHeight="30"
+                          VerticalAlignment="Center"
+                          SelectionChanged="SizeCombo_SelectionChanged" />
+
+                <Button Classes="tool"
+                        Content="A+"
+                        Click="ZoomIn_Click"
+                        ToolTip.Tip="بزرگ‌تر کردن فونت (Ctrl + چرخ ماوس به بالا)" />
+                <Button Classes="tool"
+                        Content="A−"
+                        Click="ZoomOut_Click"
+                        ToolTip.Tip="کوچک‌تر کردن فونت (Ctrl + چرخ ماوس به پایین)" />
+            </WrapPanel>
+        </Border>
+
+        <ScrollViewer x:Name="DocScroll"
+                      Grid.Row="1"
+                      Background="#FFFFFF"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <Panel x:Name="DocHost" />
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Background="#F6F8FA"
+                BorderBrush="#E3E8EE"
+                BorderThickness="0,1,0,0"
+                Padding="12,7">
+            <DockPanel LastChildFill="True">
+                <TextBlock x:Name="CountText"
+                           DockPanel.Dock="Left"
+                           FlowDirection="RightToLeft"
+                           FontSize="12"
+                           Foreground="#6B7580"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="FileText"
+                           Text="فایلی باز نشده است"
+                           FlowDirection="RightToLeft"
+                           TextAlignment="Right"
+                           FontSize="12"
+                           Foreground="#4B5563"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>
