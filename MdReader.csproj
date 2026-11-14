@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>MdReader</RootNamespace>
     <AssemblyName>MdReader</AssemblyName>
+    <Version>1.0.0</Version>
     <ApplicationIcon>assets\MdReader.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

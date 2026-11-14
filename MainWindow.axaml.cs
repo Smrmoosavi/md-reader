@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Avalonia;
@@ -19,6 +20,7 @@ namespace MdReader;
 public partial class MainWindow : Window
 {
     private static readonly double[] FontSizes = { 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 44, 56 };
+    private static readonly string AppVersion = ResolveVersion();
 
     private static readonly string[] PreferredFonts =
     {
@@ -48,6 +50,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _startArgs = args;
+        Title = $"MD Reader {AppVersion}";
 
         TryLoadWindowIcon();
         LoadFontFamilies();
@@ -59,6 +62,21 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DragOverEvent, Window_DragOver);
         AddHandler(DragDrop.DropEvent, Window_Drop);
         AddHandler(PointerWheelChangedEvent, Window_PointerWheelChanged, RoutingStrategies.Tunnel);
+    }
+
+    private static string ResolveVersion()
+    {
+        var info = typeof(MainWindow).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+        if (string.IsNullOrWhiteSpace(info))
+        {
+            return typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        }
+
+        // Source-link builds append "+<commit>"; the window title only needs the version.
+        var plus = info.IndexOf('+');
+        return plus > 0 ? info[..plus] : info;
     }
 
     private void TryLoadWindowIcon()
@@ -233,7 +251,7 @@ public partial class MainWindow : Window
         {
             _markdown = ReadText(path);
             _filePath = path;
-            Title = $"{Path.GetFileName(path)} — MD Reader";
+            Title = $"{Path.GetFileName(path)} — MD Reader {AppVersion}";
             ReloadButton.IsEnabled = true;
             Refresh(preserveScroll);
             UpdateStatus();
