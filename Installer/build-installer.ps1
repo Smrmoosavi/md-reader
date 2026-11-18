@@ -7,7 +7,10 @@ $payloadZip = Join-Path $installerDir 'payload.zip'
 
 Write-Host 'Publishing MD Reader...'
 if (Test-Path $payloadDir) { Remove-Item $payloadDir -Recurse -Force }
-dotnet publish (Join-Path $root 'MdReader.csproj') -c Release -r win-x64 --self-contained false -o $payloadDir --nologo
+
+# Self-contained so the installed app runs without a separate .NET installation.
+dotnet publish (Join-Path $root 'MdReader.csproj') -c Release -r win-x64 --self-contained true `
+    -p:DebugType=none -o $payloadDir --nologo
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 Write-Host 'Packing payload...'
@@ -18,9 +21,11 @@ Write-Host 'Building installer...'
 $distDir = Join-Path $installerDir 'dist'
 if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
 
-# Single file so the installer can copy itself into the install folder as Uninstall.exe.
-dotnet publish (Join-Path $installerDir 'Installer.csproj') -c Release -r win-x64 --self-contained false `
-    -p:PublishSingleFile=true -p:DebugType=none -o $distDir --nologo
+# Self-contained single file (native libraries included) so it runs without .NET, and so it
+# can copy itself into the install folder as Uninstall.exe.
+dotnet publish (Join-Path $installerDir 'Installer.csproj') -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+    -p:DebugType=none -o $distDir --nologo
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 $setup = Join-Path $distDir 'MdReaderSetup.exe'

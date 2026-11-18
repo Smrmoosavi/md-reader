@@ -358,9 +358,11 @@ internal static class SetupService
                 return;
             }
 
+            // ping is used as the delay because timeout.exe needs a console and fails instantly
+            // without one, which used to race with this process still holding Uninstall.exe open.
             var info = new ProcessStartInfo(
                 "cmd.exe",
-                $"/c timeout /t 2 /nobreak >nul & rmdir /s /q \"{installDir}\"")
+                $"/c ping 127.0.0.1 -n 3 >nul & rmdir /s /q \"{installDir}\"")
             {
                 CreateNoWindow = true,
                 UseShellExecute = false,
