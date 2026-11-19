@@ -25,7 +25,12 @@ public partial class App : Application
                 desktop.MainWindow = CreateDesktopWindow(desktop.Args ?? Array.Empty<string>());
                 break;
 
-            // Android, iOS and the browser host a single view instead of a window.
+            // Android can host several activities, so it asks for a view factory instead.
+            case IActivityApplicationLifetime activity:
+                activity.MainViewFactory = () => new MainView();
+                break;
+
+            // iOS and the browser host a single view instead of a window.
             case ISingleViewApplicationLifetime singleView:
                 singleView.MainView = new MainView();
                 break;

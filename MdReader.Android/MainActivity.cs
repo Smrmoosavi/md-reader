@@ -10,6 +10,6 @@ namespace MdReader.Droid;
     Icon = "@mipmap/icon",
     MainLauncher = true,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
-public class MainActivity : AvaloniaMainActivity<MdReader.App>
+public class MainActivity : AvaloniaMainActivity
 {
 }
