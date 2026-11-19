@@ -8,31 +8,42 @@
     <RootNamespace>MdReader</RootNamespace>
     <AssemblyName>MdReader</AssemblyName>
     <Version>1.0.0</Version>
-    <ApplicationIcon>assets\MdReader.ico</ApplicationIcon>
+    <ApplicationIcon>MdReader.Shared\assets\MdReader.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Installer/ is a separate Windows-only WPF project inside this folder; keep it out of the app build. -->
+    <!-- Installer/, MdReader.Shared/ and MdReader.Android/ are separate projects inside this
+         folder; keep them out of the desktop app build. -->
     <Compile Remove="Installer/**" />
+    <Compile Remove="MdReader.Shared/**" />
+    <Compile Remove="MdReader.Android/**" />
     <AvaloniaXaml Remove="Installer/**" />
+    <AvaloniaXaml Remove="MdReader.Shared/**" />
+    <AvaloniaXaml Remove="MdReader.Android/**" />
+    <AvaloniaResource Remove="Installer/**" />
+    <AvaloniaResource Remove="MdReader.Shared/**" />
+    <AvaloniaResource Remove="MdReader.Android/**" />
     <Resource Remove="Installer/**" />
+    <Resource Remove="MdReader.Shared/**" />
+    <Resource Remove="MdReader.Android/**" />
     <EmbeddedResource Remove="Installer/**" />
+    <EmbeddedResource Remove="MdReader.Shared/**" />
+    <EmbeddedResource Remove="MdReader.Android/**" />
     <None Remove="Installer/**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <AvaloniaResource Include="assets\**" />
+    <None Remove="MdReader.Shared/**" />
+    <None Remove="MdReader.Android/**" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.6" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
-    <PackageReference Include="Markdig" Version="1.6.0" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="MdReader.Shared\MdReader.Shared.csproj" />
   </ItemGroup>
 
 </Project>

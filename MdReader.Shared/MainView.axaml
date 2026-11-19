@@ -1,11 +1,8 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="MdReader.MainWindow"
-        Title="MD Reader"
-        Width="1080" Height="760" MinWidth="720" MinHeight="440"
-        WindowStartupLocation="CenterScreen"
-        Background="#FFFFFF"
-        FontSize="13">
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MdReader.MainView"
+             Background="#FFFFFF"
+             FontSize="13">
 
     <Grid RowDefinitions="Auto,*,Auto">
 
@@ -97,4 +94,4 @@
             </DockPanel>
         </Border>
     </Grid>
-</Window>
+</UserControl>

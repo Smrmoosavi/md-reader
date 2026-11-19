@@ -1,10 +1,10 @@
 # MD Reader
 
-خواننده‌ی سبک فایل‌های Markdown با C# و [Avalonia](https://avaloniaui.net/). برنامه روی **ویندوز، لینوکس و مک** اجرا می‌شود و برای نمایش Markdown به مرورگر، WebView یا اینترنت نیازی ندارد.
+خواننده‌ی سبک فایل‌های Markdown با C# و [Avalonia](https://avaloniaui.net/). برنامه روی **ویندوز، لینوکس، مک و اندروید** اجرا می‌شود و برای نمایش Markdown به مرورگر، WebView یا اینترنت نیازی ندارد.
 
 ## امکانات
 
-- باز کردن فایل‌های `.md` (و `.txt`) با دکمه، میان‌بر یا کشیدن فایل روی پنجره
+- باز کردن فایل‌های `.md` (و `.txt`) با دکمه، میان‌بر یا کشیدن فایل روی پنجره (کشیدن فایل مخصوص دسکتاپ است)
 - کلید **راست به چپ (RTL)** برای نمایش کامل سند از راست به چپ (فهرست‌ها، نقل‌قول‌ها و جدول‌ها هم قرینه می‌شوند و کد همیشه چپ‌به‌راست می‌ماند)
 - انتخاب فونت از میان همه‌ی فونت‌های نصب‌شده‌ی سیستم؛ تغییر فونت روی کل فایل اعمال می‌شود
 - تغییر اندازه‌ی فونت (همه‌ی بخش‌ها، از جمله تیترها و کد، متناسب بزرگ/کوچک می‌شوند)
@@ -15,8 +15,9 @@
 
 ## پیش‌نیاز
 
-- **.NET SDK 8** برای ساخت، یا **.NET 8 Runtime** برای اجرای نسخه‌ی وابسته به رانیتایم
+- **.NET SDK 8** برای ساخت نسخه‌ی دسکتاپ، یا **.NET 8 Runtime** برای اجرای نسخه‌ی وابسته به رانیتایم
 - ویندوز ۱۰/۱۱، لینوکس (X11 یا Wayland) یا macOS 11 یا بالاتر
+- برای ساخت اندروید: **.NET SDK 10**، ورک‌لود `android` و **JDK 17** (بخش [ساخت نسخه‌ی اندروید](#ساخت-نسخهی-اندروید))
 
 ## اجرا
 
@@ -46,6 +47,32 @@ dotnet publish -c Release -r osx-x64   --self-contained true -o dist/osx-x64
 ```
 
 اگر روی سیستم مقصد .NET 8 نصب است، `--self-contained false` حجم خروجی را کم می‌کند.
+
+## ساخت نسخه‌ی اندروید
+
+هد اندروید (`MdReader.Android/`) از Avalonia 12 استفاده می‌کند که فقط برای `net10.0-android` ساخته شده؛ پس برخلاف بقیه‌ی برنامه‌ها به **.NET SDK 10** نیاز دارد. یک‌بار ابزارها را نصب کنید:
+
+```bash
+dotnet workload install android   # چند گیگابایت فضا و احتمالاً دسترسی ادمین/root می‌خواهد
+java -version                     # باید JDK 17 باشد
+```
+
+سپس:
+
+```bash
+dotnet publish MdReader.Android/MdReader.Android.csproj -c Release -f net10.0-android \
+    -p:AndroidPackageFormats=apk -o out/android
+```
+
+خروجی: `out/android/com.smrmoosavi.mdreader-Signed.apk`. برای نصب روی گوشی، «نصب از منابع نامشخص» را برای فایل‌منیجر یا مرورگر اجازه بدهید و APK را باز کنید. اجرا روی گوشی/امولاتور وصل‌شده هم ممکن است:
+
+```bash
+dotnet build MdReader.Android/MdReader.Android.csproj -t:Run -f net10.0-android
+```
+
+تنظیمات فعلی: package id `com.smrmoosavi.mdreader`، حداقل اندروید ۷ (API 24)، خروجی APK و امضا با کلید debug (برای نصب دستی کافی است). برای انتشار در Google Play باید keystore بسازید، `AndroidKeyStore` و کلید امضا را در `MdReader.Android.csproj` تنظیم کنید و خروجی را به AAB تغییر بدهید.
+
+باز کردن فایل در اندروید با انتخاب‌گر فایل سیستم انجام می‌شود و محتوا از استریم خوانده می‌شود (نه از مسیر فایل)، بنابراین با scoped storage اندروید سازگار است؛ دکمه‌ی «بازخوانی» هم همان فایل انتخاب‌شده را دوباره می‌خواند. کشیدن فایل روی پنجره فقط در دسکتاپ معنی دارد.
 
 ## میان‌برها
 
@@ -103,11 +130,12 @@ xdg-mime default mdreader.desktop text/markdown
 
 ## ساختار پروژه
 
-- `Program.cs` / `App.axaml` — نقطه‌ی شروع و استایل‌های رابط کاربری
-- `MainWindow.axaml` / `MainWindow.axaml.cs` — نوار ابزار، باز کردن فایل، تغییر فونت، RTL و نوار وضعیت
-- `Rendering/MarkdownRenderer.cs` — تبدیل خروجی Markdig به کنترل‌های Avalonia
-- `assets/MdReader.ico` و `assets/MdReader.png` — آیکون برنامه (چندسایز برای ویندوز، PNG برای پنجره و لینوکس)
+- `MdReader.csproj` / `Program.cs` — هد دسکتاپ (بخش فقط‌ویندوز/دسکتاپ برنامه)
+- `MdReader.Shared/` — کتابخانه‌ی مشترک: `App.axaml`، `MainView.axaml(.cs)` (کل رابط کاربری)، `Rendering/MarkdownRenderer.cs` و `assets/`
+- `MdReader.Android/` — هد اندروید: `MainActivity`، مانیفست، آیکون و تم
 - `Installer/` — برنامه‌ی نصب ویندوز (پروژه‌ی جدا؛ در ساخت برنامه‌ی اصلی نادیده گرفته می‌شود)
+
+رابط کاربری در `MainView` است، بنابراین دسکتاپ (پنجره) و اندروید (تک‌ویو) همان کد را اجرا می‌کنند. پنجره‌ی دسکتاپ و آیکونش در `MdReader.Shared/App.axaml.cs` ساخته می‌شوند و `MainWindow` جداگانه‌ای وجود ندارد.
 
 ## ارسال به GitHub
 
@@ -133,7 +161,10 @@ git push origin v1.0.0
 - `MdReader-linux-x64.tar.gz`
 - `MdReader-osx-arm64.tar.gz` (مک با پردازنده‌ی Apple Silicon)
 - `MdReader-osx-x64.tar.gz` (مک با پردازنده‌ی Intel)
+- `com.smrmoosavi.mdreader-Signed.apk` (اندروید؛ با کلید debug امضا شده و برای نصب دستی کافی است)
 
 این نسخه‌ها self-contained هستند و به نصب .NET روی سیستم مقصد نیازی ندارند. اجرای دستی هم از **Actions → Release → Run workflow** ممکن است (بدون ساخت Release، فقط artifact).
+
+APK اندروید در یک job جداگانه روی `ubuntu-latest` ساخته می‌شود: نصب ورک‌لود `android` + JDK 17 روی SDK 10، سپس `dotnet publish` با `AndroidPackageFormats=apk`.
 
 `MdReaderSetup.exe` در یک job جداگانه روی `windows-latest` ساخته می‌شود: ابتدا نسخه‌ی win-x64 منتشر و به‌عنوان `payload.zip` در نصب‌کننده جاسازی می‌شود، سپس `Installer/Installer.csproj` (WPF، هدف `net10.0-windows`) به یک فایل اجرایی تک‌فایلی تبدیل می‌شود. این job از **.NET SDK 10** استفاده می‌کند، در حالی که خود برنامه با SDK 8 ساخته می‌شود.

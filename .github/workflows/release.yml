@@ -85,8 +85,53 @@ jobs:
             نسخه‌ی آماده‌ی اجرا برای ویندوز، لینوکس و مک (self-contained؛ نیازی به نصب .NET روی سیستم مقصد نیست).
 
             **ویندوز:** `MdReaderSetup.exe` برنامه را نصب می‌کند و فایل‌های `.md` را به آن نسبت می‌دهد (بدون نیاز به دسترسی ادمین). فایل `MdReader-win-x64.zip` نسخه‌ی بدون نصب است.
+
+            **اندروید:** فایل `com.smrmoosavi.mdreader-Signed.apk` روی گوشی اندروید ۷ (API 24) و بالاتر نصب می‌شود؛ برای نصب باید «نصب از منابع نامشخص» را برای مرورگر یا فایل‌منیجر اجازه بدهید.
           files: ${{ matrix.archive }}
           generate_release_notes: true
+
+  android:
+    name: android-apk
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Avalonia 12's Android build targets net10.0-android, so this job needs the .NET 10 SDK
+      # plus the android workload and a JDK.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Publish APK
+        run: >
+          dotnet publish MdReader.Android/MdReader.Android.csproj
+          -c Release
+          -f net10.0-android
+          -p:AndroidPackageFormats=apk
+          -o out/android
+
+      # Release builds without a keystore are signed with the auto-generated debug key, which
+      # is enough for sideloading.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MdReader-android
+          path: out/android/*.apk
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/android/*.apk
 
   installer:
     name: windows-installer

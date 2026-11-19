@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>MdReaderSetup</AssemblyName>
     <RootNamespace>MdReaderSetup</RootNamespace>
-    <ApplicationIcon>..\assets\MdReader.ico</ApplicationIcon>
+    <ApplicationIcon>..\MdReader.Shared\assets\MdReader.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 

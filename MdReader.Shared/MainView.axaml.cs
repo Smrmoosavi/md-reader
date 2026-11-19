@@ -5,22 +5,23 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
-using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using MdReader.Rendering;
 
 namespace MdReader;
 
-public partial class MainWindow : Window
+public partial class MainView : UserControl
 {
     private static readonly double[] FontSizes = { 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 44, 56 };
-    private static readonly string AppVersion = ResolveVersion();
+
+    public static readonly string AppVersion = ResolveVersion();
 
     private static readonly string[] PreferredFonts =
     {
@@ -28,50 +29,49 @@ public partial class MainWindow : Window
         "Noto Sans Arabic", "Noto Sans", "DejaVu Sans", "Helvetica Neue", "Arial",
     };
 
-    private readonly string[] _startArgs;
     private readonly MarkdownRenderOptions _options = new();
     private string _markdown = string.Empty;
+
+    // Files picked through Android's document picker have no filesystem path, so the storage
+    // item itself is kept and its stream re-read on reload.
+    private IStorageFile? _file;
     private string? _filePath;
+    private string _displayName = string.Empty;
+
     private RenderedMarkdown? _rendered;
     private string? _emptyTitle;
     private bool _suppressEvents;
 
-    static MainWindow()
+    static MainView()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
 
-    public MainWindow() : this(Array.Empty<string>())
-    {
-    }
-
-    public MainWindow(string[] args)
+    public MainView()
     {
         InitializeComponent();
 
-        _startArgs = args;
-        Title = $"MD Reader {AppVersion}";
-
-        TryLoadWindowIcon();
         LoadFontFamilies();
         LoadFontSizes();
         ShowEmptyState();
 
-        Opened += MainWindow_Opened;
         DragDrop.SetAllowDrop(this, true);
-        AddHandler(DragDrop.DragOverEvent, Window_DragOver);
-        AddHandler(DragDrop.DropEvent, Window_Drop);
-        AddHandler(PointerWheelChangedEvent, Window_PointerWheelChanged, RoutingStrategies.Tunnel);
+        AddHandler(DragDrop.DragOverEvent, View_DragOver);
+        AddHandler(DragDrop.DropEvent, View_Drop);
+        AddHandler(PointerWheelChangedEvent, View_PointerWheelChanged, RoutingStrategies.Tunnel);
     }
+
+    /// <summary>Raised when the open document changes; the desktop window uses it for its title bar.</summary>
+    public event EventHandler<string>? DocumentTitleChanged;
 
     private static string ResolveVersion()
     {
-        var info = typeof(MainWindow).Assembly
+        var info = typeof(MainView).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
         if (string.IsNullOrWhiteSpace(info))
         {
-            return typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+            return typeof(MainView).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
         }
 
         // Source-link builds append "+<commit>"; the window title only needs the version.
@@ -79,22 +79,10 @@ public partial class MainWindow : Window
         return plus > 0 ? info[..plus] : info;
     }
 
-    private void TryLoadWindowIcon()
+    /// <summary>Applies command line arguments (desktop only: <c>--rtl</c> and an optional file path).</summary>
+    public async void ApplyStartArguments(string[] args)
     {
-        try
-        {
-            Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://MdReader/assets/MdReader.png")));
-        }
-        catch (Exception)
-        {
-            // A missing icon file is not a reason to fail start-up.
-        }
-    }
-
-    private void MainWindow_Opened(object? sender, EventArgs e)
-    {
-        var wantsRtl = _startArgs.Any(a => a.Equals("--rtl", StringComparison.OrdinalIgnoreCase));
-        if (wantsRtl)
+        if (args.Any(a => a.Equals("--rtl", StringComparison.OrdinalIgnoreCase)))
         {
             _suppressEvents = true;
             RtlCheckBox.IsChecked = true;
@@ -102,10 +90,10 @@ public partial class MainWindow : Window
             _options.Rtl = true;
         }
 
-        var path = _startArgs.FirstOrDefault(a => !a.StartsWith('-') && File.Exists(a));
+        var path = args.FirstOrDefault(a => !a.StartsWith('-') && File.Exists(a));
         if (path != null)
         {
-            OpenFile(path, preserveScroll: false);
+            await OpenPathAsync(path);
         }
     }
 
@@ -113,7 +101,13 @@ public partial class MainWindow : Window
 
     private async void OpenButton_Click(object? sender, RoutedEventArgs e)
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storage == null)
+        {
+            return;
+        }
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "انتخاب فایل Markdown",
             AllowMultiple = false,
@@ -122,26 +116,33 @@ public partial class MainWindow : Window
                 new FilePickerFileType("فایل‌های Markdown")
                 {
                     Patterns = new[] { "*.md", "*.markdown", "*.mdown", "*.mkd" },
+                    AppleUniformTypeIdentifiers = new[] { "net.daringfireball.markdown", "public.plain-text" },
+                    MimeTypes = new[] { "text/markdown", "text/x-markdown", "text/plain" },
                 },
                 new FilePickerFileType("فایل متنی")
                 {
                     Patterns = new[] { "*.txt" },
+                    MimeTypes = new[] { "text/plain" },
                 },
                 FilePickerFileTypes.All,
             },
         });
 
-        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+        if (files.Count > 0)
         {
-            OpenFile(path, preserveScroll: false);
+            await OpenFileAsync(files[0]);
         }
     }
 
-    private void ReloadButton_Click(object? sender, RoutedEventArgs e)
+    private async void ReloadButton_Click(object? sender, RoutedEventArgs e)
     {
         if (_filePath != null)
         {
-            OpenFile(_filePath, preserveScroll: true);
+            await OpenPathAsync(_filePath, preserveScroll: true);
+        }
+        else if (_file != null)
+        {
+            await OpenFileAsync(_file, preserveScroll: true);
         }
     }
 
@@ -196,9 +197,9 @@ public partial class MainWindow : Window
             OpenButton_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
-        else if (e.Key == Key.F5 && _filePath != null)
+        else if (e.Key == Key.F5 && (_filePath != null || _file != null))
         {
-            OpenFile(_filePath, preserveScroll: true);
+            ReloadButton_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
         else if (ctrl && e.Key is Key.OemPlus or Key.Add)
@@ -218,7 +219,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_PointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    private void View_PointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
         if ((e.KeyModifiers & KeyModifiers.Control) == 0)
         {
@@ -229,46 +230,96 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void Window_DragOver(object? sender, DragEventArgs e)
+    private void View_DragOver(object? sender, DragEventArgs e)
     {
         e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
-    private void Window_Drop(object? sender, DragEventArgs e)
+    private void View_Drop(object? sender, DragEventArgs e)
     {
-        var file = e.DataTransfer.TryGetFiles()?.FirstOrDefault();
-        if (file?.TryGetLocalPath() is { } path)
+        var file = e.DataTransfer.TryGetFiles()?.OfType<IStorageFile>().FirstOrDefault();
+        if (file != null)
         {
-            OpenFile(path, preserveScroll: false);
+            _ = OpenFileAsync(file);
         }
     }
 
     // ---------- document ----------
 
-    private void OpenFile(string path, bool preserveScroll)
+    private async Task OpenFileAsync(IStorageFile file, bool preserveScroll = false)
     {
         try
         {
-            _markdown = ReadText(path);
-            _filePath = path;
-            Title = $"{Path.GetFileName(path)} — MD Reader {AppVersion}";
-            ReloadButton.IsEnabled = true;
-            Refresh(preserveScroll);
-            UpdateStatus();
+            var bytes = await ReadAllBytesAsync(file);
+            CommitDocument(file.Name, file.TryGetLocalPath(), file, ReadText(bytes), preserveScroll);
         }
         catch (Exception ex)
         {
-            FileText.Text = $"فایل باز نشد: {ex.Message}";
-            FileText.Foreground = new SolidColorBrush(Color.Parse("#B42318"));
-            CountText.Text = string.Empty;
+            ShowOpenError(ex);
         }
+    }
+
+    private async Task OpenPathAsync(string path, bool preserveScroll = false)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            var file = await TryGetStorageFileAsync(path);
+            CommitDocument(Path.GetFileName(path), path, file, ReadText(bytes), preserveScroll);
+        }
+        catch (Exception ex)
+        {
+            ShowOpenError(ex);
+        }
+    }
+
+    private static async Task<byte[]> ReadAllBytesAsync(IStorageFile file)
+    {
+        await using var stream = await file.OpenReadAsync();
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        return buffer.ToArray();
+    }
+
+    private async Task<IStorageFile?> TryGetStorageFileAsync(string path)
+    {
+        try
+        {
+            var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+            return storage == null ? null : await storage.TryGetFileFromPathAsync(path);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void CommitDocument(string name, string? path, IStorageFile? file, string markdown, bool preserveScroll)
+    {
+        _markdown = markdown;
+        _filePath = path;
+        _file = file;
+        _displayName = name;
+
+        ReloadButton.IsEnabled = true;
+        DocumentTitleChanged?.Invoke(this, $"{name} — MD Reader {AppVersion}");
+
+        Refresh(preserveScroll);
+        UpdateStatus();
+    }
+
+    private void ShowOpenError(Exception ex)
+    {
+        FileText.Text = $"فایل باز نشد: {ex.Message}";
+        FileText.Foreground = new SolidColorBrush(Color.Parse("#B42318"));
+        CountText.Text = string.Empty;
     }
 
     private void Refresh(bool preserveScroll = true)
     {
         if (_markdown.Trim().Length == 0)
         {
-            _emptyTitle = _filePath != null ? "این فایل خالی است." : null;
+            _emptyTitle = _file != null || _filePath != null ? "این فایل خالی است." : null;
             ShowEmptyState();
             return;
         }
@@ -426,22 +477,20 @@ public partial class MainWindow : Window
     {
         FileText.Foreground = new SolidColorBrush(Color.Parse("#4B5563"));
 
-        if (_filePath == null)
+        if (_file == null && _filePath == null)
         {
             FileText.Text = "فایلی باز نشده است";
             CountText.Text = string.Empty;
             return;
         }
 
-        FileText.Text = _filePath;
+        FileText.Text = _filePath ?? _displayName;
         var words = Regex.Matches(_markdown, @"[\p{L}\p{N}]+").Count;
         CountText.Text = string.Format(CultureInfo.CurrentCulture, "{0:N0} کلمه · {1:N0} کاراکتر", words, _markdown.Length);
     }
 
-    private static string ReadText(string path)
+    private static string ReadText(byte[] bytes)
     {
-        var bytes = File.ReadAllBytes(path);
-
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {
             return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);

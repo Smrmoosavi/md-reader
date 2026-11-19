@@ -534,7 +534,11 @@ public static class MarkdownRenderer
 
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsExternalScheme(uri))
         {
-            link.PointerPressed += (_, _) => OpenExternal(uri);
+            link.PointerPressed += (_, e) =>
+            {
+                e.Handled = true;
+                OpenExternal(link, uri);
+            };
         }
 
         target.Add(new InlineUIContainer { Child = link });
@@ -628,11 +632,26 @@ public static class MarkdownRenderer
     private static bool IsExternalScheme(Uri uri) =>
         uri.Scheme is "http" or "https" or "mailto";
 
-    private static void OpenExternal(Uri uri)
+    private static async void OpenExternal(Control source, Uri uri)
     {
         if (!IsExternalScheme(uri))
         {
             return;
+        }
+
+        // Launcher works on every platform; Process.Start cannot open a URL on Android.
+        try
+        {
+            var launcher = TopLevel.GetTopLevel(source)?.Launcher;
+            if (launcher != null)
+            {
+                await launcher.LaunchUriAsync(uri);
+                return;
+            }
+        }
+        catch
+        {
+            // Fall through to the desktop shell.
         }
 
         try
