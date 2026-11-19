@@ -128,9 +128,12 @@ git push origin v1.0.0
 
 نتیجه در صفحه‌ی **Releases** همان تگ قابل دانلود است:
 
+- `MdReaderSetup.exe` — برنامه‌ی نصب ویندوز (از نسخه‌ی win-x64 ساخته می‌شود)
 - `MdReader-win-x64.zip`
 - `MdReader-linux-x64.tar.gz`
 - `MdReader-osx-arm64.tar.gz` (مک با پردازنده‌ی Apple Silicon)
 - `MdReader-osx-x64.tar.gz` (مک با پردازنده‌ی Intel)
 
 این نسخه‌ها self-contained هستند و به نصب .NET روی سیستم مقصد نیازی ندارند. اجرای دستی هم از **Actions → Release → Run workflow** ممکن است (بدون ساخت Release، فقط artifact).
+
+`MdReaderSetup.exe` در یک job جداگانه روی `windows-latest` ساخته می‌شود: ابتدا نسخه‌ی win-x64 منتشر و به‌عنوان `payload.zip` در نصب‌کننده جاسازی می‌شود، سپس `Installer/Installer.csproj` (WPF، هدف `net10.0-windows`) به یک فایل اجرایی تک‌فایلی تبدیل می‌شود. این job از **.NET SDK 10** استفاده می‌کند، در حالی که خود برنامه با SDK 8 ساخته می‌شود.

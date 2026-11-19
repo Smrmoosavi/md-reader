@@ -83,5 +83,57 @@ jobs:
             **MD Reader ${{ steps.version.outputs.version }}**
 
             نسخه‌ی آماده‌ی اجرا برای ویندوز، لینوکس و مک (self-contained؛ نیازی به نصب .NET روی سیستم مقصد نیست).
+
+            **ویندوز:** `MdReaderSetup.exe` برنامه را نصب می‌کند و فایل‌های `.md` را به آن نسبت می‌دهد (بدون نیاز به دسترسی ادمین). فایل `MdReader-win-x64.zip` نسخه‌ی بدون نصب است.
           files: ${{ matrix.archive }}
           generate_release_notes: true
+
+  installer:
+    name: windows-installer
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The installer embeds the published win-x64 build as payload.zip, and that zip is
+      # exactly the Windows release archive.
+      - uses: actions/download-artifact@v4
+        with:
+          name: MdReader-win-x64
+          path: Installer
+
+      - name: Prepare payload
+        shell: pwsh
+        run: Move-Item Installer/MdReader-win-x64.zip Installer/payload.zip
+
+      # Installer/ is a WPF project that targets net10.0-windows.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build installer
+        shell: pwsh
+        run: >
+          dotnet publish Installer/Installer.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -o Installer/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MdReaderSetup-win-x64
+          path: Installer/dist/MdReaderSetup.exe
+          if-no-files-found: error
+
+      # Release name/body/notes come from the build job; this only adds the asset.
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Installer/dist/MdReaderSetup.exe
