@@ -11,7 +11,9 @@ namespace MdReaderSetup;
 internal static class SetupService
 {
     public const string AppName = "MD Reader";
-    public const string Version = "1.0.0";
+    /// <summary>Comes from Directory.Build.props, so the installed version always matches the
+    /// version written into Programs and Features and the shortcut description.</summary>
+    public static readonly string Version = ResolveVersion();
     public const string ProgId = "MdReader.md";
     public const string ExeName = "MdReader.exe";
     public const string UninstallerName = "Uninstall.exe";
@@ -23,6 +25,22 @@ internal static class SetupService
     private const string ApplicationKeyPath = @"Software\Classes\Applications\MdReader.exe";
 
     public static readonly string[] DefaultExtensions = { ".md", ".markdown", ".mdown" };
+
+    private static string ResolveVersion()
+    {
+        var info = typeof(SetupService).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false);
+
+        if (info.Length > 0 && info[0] is System.Reflection.AssemblyInformationalVersionAttribute version &&
+            !string.IsNullOrWhiteSpace(version.InformationalVersion))
+        {
+            var raw = version.InformationalVersion;
+            var plus = raw.IndexOf('+');
+            return plus > 0 ? raw[..plus] : raw;
+        }
+
+        return typeof(SetupService).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+    }
 
     public static string DefaultInstallDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "MdReader");

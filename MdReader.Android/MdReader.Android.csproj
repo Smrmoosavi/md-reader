@@ -11,8 +11,9 @@
     <RootNamespace>MdReader.Droid</RootNamespace>
     <AssemblyName>MdReader.Android</AssemblyName>
     <ApplicationId>com.smrmoosavi.mdreader</ApplicationId>
-    <ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>4</ApplicationVersion>
+    <!-- Version comes from Directory.Build.props; ApplicationVersion is the store build number. -->
+    <ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion>
+    <ApplicationVersion>5</ApplicationVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>

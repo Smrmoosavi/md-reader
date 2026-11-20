@@ -12,6 +12,7 @@ using Avalonia.Media;
 using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MdTable = Markdig.Extensions.Tables.Table;
@@ -26,6 +27,34 @@ public sealed class MarkdownRenderOptions
     public string? FontFamilyName { get; set; }
     public double BaseFontSize { get; set; } = 16;
     public bool Rtl { get; set; }
+
+    /// <summary>In-document search text; every match is highlighted while it is set.</summary>
+    public string? SearchQuery { get; set; }
+
+    /// <summary>Called for a <c>#anchor</c> link inside the document.</summary>
+    public Action<string>? NavigateToAnchor { get; set; }
+}
+
+/// <summary>One entry of the document outline (a heading and the control it rendered into).</summary>
+public sealed class OutlineEntry
+{
+    public OutlineEntry(int level, string title, Control target)
+    {
+        Level = level;
+        Title = title;
+        Target = target;
+    }
+
+    public int Level { get; }
+
+    public string Title { get; }
+
+    public Control Target { get; }
+
+    /// <summary>Left/right indentation for the nested outline levels.</summary>
+    public Thickness Indent => new((Math.Clamp(Level, 1, 6) - 1) * 12, 0, 0, 0);
+
+    public override string ToString() => Title;
 }
 
 /// <summary>Rendered document plus the callbacks needed to re-scale it when the font size changes.</summary>
@@ -34,6 +63,15 @@ public sealed class RenderedMarkdown
     internal RenderedMarkdown(Control root) => Root = root;
 
     public Control Root { get; }
+
+    /// <summary>Headings in document order, used to build the table of contents.</summary>
+    public List<OutlineEntry> Outline { get; } = new();
+
+    /// <summary>Auto identifier of each heading, so <c>#heading</c> links can jump to it.</summary>
+    public Dictionary<string, Control> Anchors { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The text block owning each search match, in reading order.</summary>
+    public List<TextBlock> MatchHosts { get; } = new();
 
     internal List<Action<double>> SizeAppliers { get; } = new();
 }
@@ -55,6 +93,7 @@ public static class MarkdownRenderer
     private static readonly IBrush QuoteBorder = Frozen(0xD5, 0xDD, 0xE5);
     private static readonly IBrush TableBorder = Frozen(0xDD, 0xE3, 0xE9);
     private static readonly IBrush TableHeaderBackground = Frozen(0xF5, 0xF7, 0xF9);
+    private static readonly IBrush SearchBrush = Frozen(0xFF, 0xE2, 0x8A);
     private static readonly IBrush Transparent = new SolidColorBrush(Colors.Transparent);
 
     private static readonly double[] HeadingFactors = { 0, 1.9, 1.55, 1.32, 1.16, 1.06, 1.0 };
@@ -186,32 +225,54 @@ public static class MarkdownRenderer
         var text = CreateText(context, factor, bold: true, lineHeightFactor: 1.35);
         text.Margin = new Thickness(0, block.Level <= 2 ? 20 : 16, 0, 6);
 
-        AddInlines(block.Inline, NewInlines(text), new InlineStyle(), context);
+        AddInlines(block.Inline, text, NewInlines(text), new InlineStyle(), context);
+
+        Control rendered;
 
         if (block.Level <= 2)
         {
-            target.Children.Add(new Border
+            var border = new Border
             {
                 Child = text,
                 BorderBrush = RuleBrush,
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(0, 0, 0, 6),
                 Margin = new Thickness(0, 20, 0, 6),
-            });
+            };
 
             text.Margin = new Thickness(0);
+            target.Children.Add(border);
+            rendered = border;
         }
         else
         {
             target.Children.Add(text);
+            rendered = text;
         }
+
+        var title = PlainText(block.Inline);
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            title = $"بخش {context.Result.Outline.Count + 1}";
+        }
+
+        context.Result.Outline.Add(new OutlineEntry(block.Level, title, rendered));
+
+        // UseAdvancedExtensions includes the auto identifier extension, so each heading can be
+        // reached through "#slug" links written in other documents. Documents written by hand
+        // sometimes skip that extension's output, so a GitHub-style slug is derived as fallback.
+        // AutoIdentifiers only produces ASCII ids (Persian headings all become "section"), so the
+        // GitHub-style slug of the heading text is registered as well; both kinds of link work.
+        var id = block.TryGetAttributes()?.Id;
+        RegisterAnchor(context.Result, id, rendered);
+        RegisterAnchor(context.Result, Slugify(title), rendered);
     }
 
     private static void AddParagraph(ParagraphBlock block, Panel target, RenderContext context, bool bold, bool compact)
     {
         var text = CreateText(context, 1.0, bold: bold);
         text.Margin = new Thickness(0, 0, 0, compact ? 0 : 12);
-        AddInlines(block.Inline, NewInlines(text), new InlineStyle(bold: bold), context);
+        AddInlines(block.Inline, text, NewInlines(text), new InlineStyle(bold: bold), context);
         target.Children.Add(text);
     }
 
@@ -437,7 +498,7 @@ public static class MarkdownRenderer
         });
     }
 
-    private static void AddInlines(ContainerInline? container, InlineCollection target, InlineStyle style, RenderContext context)
+    private static void AddInlines(ContainerInline? container, TextBlock host, InlineCollection target, InlineStyle style, RenderContext context)
     {
         if (container == null)
         {
@@ -449,7 +510,7 @@ public static class MarkdownRenderer
             switch (node)
             {
                 case LiteralInline literal:
-                    AddRun(target, literal.Content.ToString(), style, context);
+                    AddRun(target, host, literal.Content.ToString(), style, context);
                     break;
 
                 case EmphasisInline emphasis:
@@ -461,16 +522,16 @@ public static class MarkdownRenderer
                             ? style.Derive(bold: true)
                             : style.Derive(italic: true),
                     };
-                    AddInlines(emphasis, target, emphasisStyle, context);
+                    AddInlines(emphasis, host, target, emphasisStyle, context);
                     break;
 
                 case CodeInline code:
-                    AddRun(target, code.Content ?? string.Empty, style.Derive(code: true), context);
+                    AddRun(target, host, code.Content ?? string.Empty, style.Derive(code: true), context);
                     break;
 
                 case LinkInline link when link.IsImage:
                     var alt = PlainText(link);
-                    AddRun(target, string.IsNullOrWhiteSpace(alt) ? "[تصویر]" : $"[{alt}]",
+                    AddRun(target, host, string.IsNullOrWhiteSpace(alt) ? "[تصویر]" : $"[{alt}]",
                         style.Derive(italic: true, muted: true), context);
                     break;
 
@@ -489,23 +550,23 @@ public static class MarkdownRenderer
                     }
                     else
                     {
-                        AddRun(target, " ", style, context);
+                        AddRun(target, host, " ", style, context);
                     }
                     break;
 
                 case HtmlEntityInline entity:
-                    AddRun(target, entity.Transcoded.ToString(), style, context);
+                    AddRun(target, host, entity.Transcoded.ToString(), style, context);
                     break;
 
                 case TaskList task:
-                    AddRun(target, task.Checked ? "☑ " : "☐ ", style, context);
+                    AddRun(target, host, task.Checked ? "☑ " : "☐ ", style, context);
                     break;
 
                 case HtmlInline:
                     break;
 
                 case ContainerInline nested:
-                    AddInlines(nested, target, style, context);
+                    AddInlines(nested, host, target, style, context);
                     break;
             }
         }
@@ -532,7 +593,17 @@ public static class MarkdownRenderer
             VerticalAlignment = VerticalAlignment.Bottom,
         };
 
-        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsExternalScheme(uri))
+        if (!string.IsNullOrEmpty(url) && url.TrimStart().StartsWith('#'))
+        {
+            // "#heading" is a jump inside the same document, not something to open externally.
+            var anchor = url.TrimStart().TrimStart('#');
+            link.PointerPressed += (_, e) =>
+            {
+                e.Handled = true;
+                context.Options.NavigateToAnchor?.Invoke(anchor);
+            };
+        }
+        else if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsExternalScheme(uri))
         {
             link.PointerPressed += (_, e) =>
             {
@@ -544,13 +615,46 @@ public static class MarkdownRenderer
         target.Add(new InlineUIContainer { Child = link });
     }
 
-    private static void AddRun(InlineCollection target, string? text, InlineStyle style, RenderContext context)
+    private static void AddRun(InlineCollection target, TextBlock host, string? text, InlineStyle style, RenderContext context)
     {
         if (string.IsNullOrEmpty(text))
         {
             return;
         }
 
+        var query = context.Options.SearchQuery;
+        if (string.IsNullOrEmpty(query))
+        {
+            target.Add(CreateRun(text, style, context));
+            return;
+        }
+
+        var index = 0;
+        while (index < text.Length)
+        {
+            var found = text.IndexOf(query, index, StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+            {
+                target.Add(CreateRun(text[index..], style, context));
+                break;
+            }
+
+            if (found > index)
+            {
+                target.Add(CreateRun(text[index..found], style, context));
+            }
+
+            var match = CreateRun(text.Substring(found, query.Length), style, context);
+            match.Background = SearchBrush;
+            target.Add(match);
+            context.Result.MatchHosts.Add(host);
+
+            index = found + query.Length;
+        }
+    }
+
+    private static Run CreateRun(string text, InlineStyle style, RenderContext context)
+    {
         var run = new Run(text);
 
         if (style.Bold) run.FontWeight = FontWeight.SemiBold;
@@ -568,11 +672,46 @@ public static class MarkdownRenderer
             context.Result.SizeAppliers.Add(size => run.FontSize = size * factor);
         }
 
-        target.Add(run);
+        return run;
     }
 
-    private static string PlainText(ContainerInline container)
+    private static void RegisterAnchor(RenderedMarkdown result, string? id, Control target)
     {
+        if (!string.IsNullOrWhiteSpace(id) && !result.Anchors.ContainsKey(id))
+        {
+            result.Anchors[id] = target;
+        }
+    }
+
+    private static string Slugify(string title)
+    {
+        var builder = new StringBuilder(title.Length);
+        var previousDash = false;
+
+        foreach (var ch in title.Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(ch);
+                previousDash = false;
+            }
+            else if (ch is ' ' or '-' or '_' && !previousDash)
+            {
+                builder.Append('-');
+                previousDash = true;
+            }
+        }
+
+        return builder.ToString().Trim('-');
+    }
+
+    private static string PlainText(ContainerInline? container)
+    {
+        if (container == null)
+        {
+            return string.Empty;
+        }
+
         var builder = new StringBuilder();
         foreach (var node in container.FindDescendants<Markdig.Syntax.Inlines.Inline>())
         {

@@ -46,7 +46,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' MdReader.csproj | head -n1 | tr -d '[:space:]')
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -n1 | tr -d '[:space:]')
           if [ -z "$version" ]; then
             version="${GITHUB_REF_NAME}"
           fi

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:MdReader"
+             xmlns:rendering="using:MdReader.Rendering"
              x:Class="MdReader.MainView"
              Background="#FFFFFF"
              FontSize="13">
@@ -24,9 +25,28 @@
             <Setter Property="Padding" Value="10,2" />
             <Setter Property="FontSize" Value="12" />
         </Style>
+        <Style Selector="Button.outline">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#3B4450" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Right" />
+        </Style>
+        <Style Selector="Button.outline:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E4EBF3" />
+        </Style>
+        <Style Selector="Button.outline TextBlock">
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
         <Border Grid.Row="0"
                 Background="#F6F8FA"
@@ -60,8 +80,8 @@
                           VerticalAlignment="Center"
                           SelectionChanged="FontCombo_SelectionChanged">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}" FontFamily="{Binding}" FontSize="14" />
+                        <DataTemplate x:DataType="local:FontChoice">
+                            <TextBlock Text="{Binding Label}" FontFamily="{Binding Family}" FontSize="14" />
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
@@ -82,6 +102,18 @@
                         Content="A−"
                         Click="ZoomOut_Click"
                         ToolTip.Tip="کوچک‌تر کردن فونت (Ctrl + چرخ ماوس به پایین)" />
+
+                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="#E3E8EE" VerticalAlignment="Center" />
+
+                <Button Classes="tool"
+                        Content="جست‌وجو"
+                        Click="SearchButton_Click"
+                        ToolTip.Tip="جست‌وجو در سند (Ctrl + F)" />
+                <ToggleButton x:Name="TocToggle"
+                              Classes="tool"
+                              Content="فهرست"
+                              IsCheckedChanged="TocToggle_Changed"
+                              ToolTip.Tip="نمایش یا پنهان کردن فهرست مطالب" />
             </WrapPanel>
         </Border>
 
@@ -108,15 +140,97 @@
             </TabStrip.ItemTemplate>
         </TabStrip>
 
-        <ScrollViewer x:Name="DocScroll"
-                      Grid.Row="2"
-                      Background="#FFFFFF"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-            <Panel x:Name="DocHost" />
-        </ScrollViewer>
+        <Border x:Name="SearchBar"
+                Grid.Row="2"
+                Background="#F6F8FA"
+                BorderBrush="#E3E8EE"
+                BorderThickness="0,0,0,1"
+                Padding="10,6"
+                IsVisible="False">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" FlowDirection="RightToLeft">
+                <TextBox x:Name="SearchBox"
+                         Grid.Column="0"
+                         MinHeight="30"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         PlaceholderText="متن موردنظر را بنویسید…"
+                         TextChanged="SearchBox_TextChanged"
+                         KeyDown="SearchBox_KeyDown" />
+                <TextBlock x:Name="SearchCountText"
+                           Grid.Column="1"
+                           Margin="12,0,12,0"
+                           FontSize="12"
+                           Foreground="#6B7580"
+                           VerticalAlignment="Center"
+                           ToolTip.Tip="Enter = نتیجه بعدی، Shift + Enter = نتیجه قبلی، Escape = بستن" />
+                <Button Grid.Column="2"
+                        Classes="tool"
+                        Content="قبلی"
+                        Click="SearchPrev_Click" />
+                <Button Grid.Column="3"
+                        Classes="tool"
+                        Content="بعدی"
+                        Click="SearchNext_Click" />
+                <Button Grid.Column="4"
+                        Classes="tool"
+                        Content="✕"
+                        Click="SearchClose_Click"
+                        ToolTip.Tip="بستن جست‌وجو (Escape)" />
+            </Grid>
+        </Border>
 
-        <Border Grid.Row="3"
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
+            <ScrollViewer x:Name="DocScroll"
+                          Grid.Column="0"
+                          Background="#FFFFFF"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <Panel x:Name="DocHost" />
+            </ScrollViewer>
+
+            <Border x:Name="OutlinePanel"
+                    Grid.Column="1"
+                    Width="250"
+                    Background="#F8FAFC"
+                    BorderBrush="#E3E8EE"
+                    BorderThickness="1,0,0,0"
+                    Padding="6,10"
+                    IsVisible="False">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="فهرست مطالب"
+                               FlowDirection="RightToLeft"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#6B7580"
+                               Margin="8,0,8,8" />
+                    <TextBlock x:Name="OutlineEmpty"
+                               DockPanel.Dock="Top"
+                               Text="این سند تیتر ندارد."
+                               FlowDirection="RightToLeft"
+                               TextWrapping="Wrap"
+                               FontSize="12"
+                               Foreground="#98A2B3"
+                               Margin="8,0,8,0"
+                               IsVisible="False" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="OutlineList" FlowDirection="RightToLeft">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="rendering:OutlineEntry">
+                                    <Button Classes="outline"
+                                            Content="{Binding Title}"
+                                            Margin="{Binding Indent}"
+                                            Click="OutlineItem_Click"
+                                            ToolTip.Tip="{Binding Title}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="4"
                 Background="#F6F8FA"
                 BorderBrush="#E3E8EE"
                 BorderThickness="0,1,0,0"

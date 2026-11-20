@@ -7,9 +7,6 @@
     <RootNamespace>MdReader</RootNamespace>
     <AssemblyName>MdReader.Shared</AssemblyName>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <!-- Keep in sync with MdReader.csproj and MdReader.Android: the title bar reads the
-         informational version of this assembly. -->
-    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
