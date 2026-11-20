@@ -1,10 +1,32 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:MdReader"
              x:Class="MdReader.MainView"
              Background="#FFFFFF"
              FontSize="13">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <UserControl.Styles>
+        <Style Selector="Button.tabclose">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.65" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tabclose:pointerover">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="TabStrip > TabItem">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <Border Grid.Row="0"
                 Background="#F6F8FA"
@@ -63,15 +85,38 @@
             </WrapPanel>
         </Border>
 
+        <TabStrip x:Name="DocTabs"
+                  Grid.Row="1"
+                  Background="#F6F8FA"
+                  FlowDirection="RightToLeft"
+                  IsVisible="False"
+                  SelectionChanged="DocTabs_SelectionChanged">
+            <TabStrip.ItemTemplate>
+                <DataTemplate x:DataType="local:DocumentTab">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding Header}"
+                                   MaxWidth="220"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"
+                                   ToolTip.Tip="{Binding ToolTip}" />
+                        <Button Classes="tabclose"
+                                Content="✕"
+                                Click="CloseTab_Click"
+                                ToolTip.Tip="بستن این تب" />
+                    </StackPanel>
+                </DataTemplate>
+            </TabStrip.ItemTemplate>
+        </TabStrip>
+
         <ScrollViewer x:Name="DocScroll"
-                      Grid.Row="1"
+                      Grid.Row="2"
                       Background="#FFFFFF"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
             <Panel x:Name="DocHost" />
         </ScrollViewer>
 
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Background="#F6F8FA"
                 BorderBrush="#E3E8EE"
                 BorderThickness="0,1,0,0"

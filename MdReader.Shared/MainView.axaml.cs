@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -17,6 +18,35 @@ using MdReader.Rendering;
 
 namespace MdReader;
 
+/// <summary>One open document. Files picked through Android's document picker have no
+/// filesystem path, so the storage item is kept and its stream re-read on reload.</summary>
+public sealed class DocumentTab
+{
+    public DocumentTab(string header, string? path, IStorageFile? file, string markdown)
+    {
+        Header = header;
+        Path = path;
+        File = file;
+        Markdown = markdown;
+    }
+
+    public string Header { get; set; }
+
+    public string? Path { get; }
+
+    public IStorageFile? File { get; }
+
+    public string Markdown { get; set; }
+
+    public double ScrollOffset { get; set; }
+
+    public RenderedMarkdown? Rendered { get; set; }
+
+    public string? EmptyTitle { get; set; }
+
+    public string ToolTip => Path ?? Header;
+}
+
 public partial class MainView : UserControl
 {
     private static readonly double[] FontSizes = { 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 44, 56 };
@@ -30,17 +60,11 @@ public partial class MainView : UserControl
     };
 
     private readonly MarkdownRenderOptions _options = new();
-    private string _markdown = string.Empty;
+    private readonly ObservableCollection<DocumentTab> _tabs = new();
 
-    // Files picked through Android's document picker have no filesystem path, so the storage
-    // item itself is kept and its stream re-read on reload.
-    private IStorageFile? _file;
-    private string? _filePath;
-    private string _displayName = string.Empty;
-
-    private RenderedMarkdown? _rendered;
-    private string? _emptyTitle;
+    private DocumentTab? _current;
     private bool _suppressEvents;
+    private bool _suppressTabEvents;
 
     static MainView()
     {
@@ -50,6 +74,8 @@ public partial class MainView : UserControl
     public MainView()
     {
         InitializeComponent();
+
+        DocTabs.ItemsSource = _tabs;
 
         LoadFontFamilies();
         LoadFontSizes();
@@ -79,7 +105,7 @@ public partial class MainView : UserControl
         return plus > 0 ? info[..plus] : info;
     }
 
-    /// <summary>Applies command line arguments (desktop only: <c>--rtl</c> and an optional file path).</summary>
+    /// <summary>Applies command line arguments (desktop only: <c>--rtl</c> and optional file paths).</summary>
     public async void ApplyStartArguments(string[] args)
     {
         if (args.Any(a => a.Equals("--rtl", StringComparison.OrdinalIgnoreCase)))
@@ -90,8 +116,7 @@ public partial class MainView : UserControl
             _options.Rtl = true;
         }
 
-        var path = args.FirstOrDefault(a => !a.StartsWith('-') && File.Exists(a));
-        if (path != null)
+        foreach (var path in args.Where(a => !a.StartsWith('-') && System.IO.File.Exists(a)))
         {
             await OpenPathAsync(path);
         }
@@ -110,7 +135,7 @@ public partial class MainView : UserControl
         var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "انتخاب فایل Markdown",
-            AllowMultiple = false,
+            AllowMultiple = true,
             FileTypeFilter = new[]
             {
                 new FilePickerFileType("فایل‌های Markdown")
@@ -128,22 +153,37 @@ public partial class MainView : UserControl
             },
         });
 
-        if (files.Count > 0)
+        foreach (var file in files)
         {
-            await OpenFileAsync(files[0]);
+            await OpenFileAsync(file);
         }
     }
 
     private async void ReloadButton_Click(object? sender, RoutedEventArgs e)
     {
-        if (_filePath != null)
+        if (_current == null)
         {
-            await OpenPathAsync(_filePath, preserveScroll: true);
+            return;
         }
-        else if (_file != null)
+
+        if (_current.Path != null)
         {
-            await OpenFileAsync(_file, preserveScroll: true);
+            await OpenPathAsync(_current.Path, replaceCurrent: true);
         }
+        else if (_current.File != null)
+        {
+            await OpenFileAsync(_current.File, replaceCurrent: true);
+        }
+    }
+
+    private void CloseTab_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is DocumentTab tab)
+        {
+            CloseTab(tab);
+        }
+
+        e.Handled = true;
     }
 
     private void RtlCheckBox_Changed(object? sender, RoutedEventArgs e)
@@ -154,7 +194,7 @@ public partial class MainView : UserControl
         }
 
         _options.Rtl = RtlCheckBox.IsChecked == true;
-        Refresh();
+        Refresh(preserveScroll: true);
     }
 
     private void FontCombo_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -197,7 +237,12 @@ public partial class MainView : UserControl
             OpenButton_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
-        else if (e.Key == Key.F5 && (_filePath != null || _file != null))
+        else if (ctrl && e.Key == Key.W && _current != null)
+        {
+            CloseTab(_current);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F5 && _current != null)
         {
             ReloadButton_Click(this, new RoutedEventArgs());
             e.Handled = true;
@@ -237,21 +282,105 @@ public partial class MainView : UserControl
 
     private void View_Drop(object? sender, DragEventArgs e)
     {
-        var file = e.DataTransfer.TryGetFiles()?.OfType<IStorageFile>().FirstOrDefault();
-        if (file != null)
+        var files = e.DataTransfer.TryGetFiles()?.OfType<IStorageFile>().ToArray();
+        if (files is not { Length: > 0 })
         {
-            _ = OpenFileAsync(file);
+            return;
+        }
+
+        _ = OpenFilesAsync(files);
+    }
+
+    private async Task OpenFilesAsync(IStorageFile[] files)
+    {
+        foreach (var file in files)
+        {
+            await OpenFileAsync(file);
+        }
+    }
+
+    // ---------- tabs ----------
+
+    private void DocTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressTabEvents || DocTabs.SelectedItem is not DocumentTab tab)
+        {
+            return;
+        }
+
+        ActivateTab(tab);
+    }
+
+    private void ActivateTab(DocumentTab tab)
+    {
+        if (_current != null && !ReferenceEquals(_current, tab))
+        {
+            _current.ScrollOffset = DocScroll.Offset.Y;
+        }
+
+        _current = tab;
+
+        if (!ReferenceEquals(DocTabs.SelectedItem, tab))
+        {
+            _suppressTabEvents = true;
+            DocTabs.SelectedItem = tab;
+            _suppressTabEvents = false;
+        }
+
+        ReloadButton.IsEnabled = true;
+        DocumentTitleChanged?.Invoke(this, $"{tab.Header} — MD Reader {AppVersion}");
+
+        Refresh(preserveScroll: false);
+        UpdateStatus();
+    }
+
+    private void CloseTab(DocumentTab tab)
+    {
+        var index = _tabs.IndexOf(tab);
+        if (index < 0)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(_current, tab))
+        {
+            _current = null;
+        }
+
+        _tabs.Remove(tab);
+        DocTabs.IsVisible = _tabs.Count > 1;
+
+        if (_tabs.Count == 0)
+        {
+            DocTabs.IsVisible = false;
+            ReloadButton.IsEnabled = false;
+            ShowEmptyState();
+            UpdateStatus();
+            DocumentTitleChanged?.Invoke(this, $"MD Reader {AppVersion}");
+            return;
+        }
+
+        if (_current == null)
+        {
+            _suppressTabEvents = true;
+            DocTabs.SelectedItem = _tabs[Math.Min(index, _tabs.Count - 1)];
+            _suppressTabEvents = false;
+
+            if (DocTabs.SelectedItem is DocumentTab next)
+            {
+                ActivateTab(next);
+            }
         }
     }
 
     // ---------- document ----------
 
-    private async Task OpenFileAsync(IStorageFile file, bool preserveScroll = false)
+    private async Task OpenFileAsync(IStorageFile file, bool replaceCurrent = false)
     {
         try
         {
             var bytes = await ReadAllBytesAsync(file);
-            CommitDocument(file.Name, file.TryGetLocalPath(), file, ReadText(bytes), preserveScroll);
+            CommitDocument(file.Name, file.TryGetLocalPath(), file, ReadText(bytes), replaceCurrent);
         }
         catch (Exception ex)
         {
@@ -259,13 +388,13 @@ public partial class MainView : UserControl
         }
     }
 
-    private async Task OpenPathAsync(string path, bool preserveScroll = false)
+    private async Task OpenPathAsync(string path, bool replaceCurrent = false)
     {
         try
         {
-            var bytes = File.ReadAllBytes(path);
+            var bytes = System.IO.File.ReadAllBytes(path);
             var file = await TryGetStorageFileAsync(path);
-            CommitDocument(Path.GetFileName(path), path, file, ReadText(bytes), preserveScroll);
+            CommitDocument(System.IO.Path.GetFileName(path), path, file, ReadText(bytes), replaceCurrent);
         }
         catch (Exception ex)
         {
@@ -294,18 +423,31 @@ public partial class MainView : UserControl
         }
     }
 
-    private void CommitDocument(string name, string? path, IStorageFile? file, string markdown, bool preserveScroll)
+    private void CommitDocument(string name, string? path, IStorageFile? file, string markdown, bool replaceCurrent)
     {
-        _markdown = markdown;
-        _filePath = path;
-        _file = file;
-        _displayName = name;
+        var tab = replaceCurrent ? _current : null;
 
-        ReloadButton.IsEnabled = true;
-        DocumentTitleChanged?.Invoke(this, $"{name} — MD Reader {AppVersion}");
+        if (tab == null)
+        {
+            tab = new DocumentTab(name, path, file, markdown);
+            _tabs.Add(tab);
+        }
+        else
+        {
+            tab.Markdown = markdown;
+            tab.ScrollOffset = DocScroll.Offset.Y;
+        }
 
-        Refresh(preserveScroll);
-        UpdateStatus();
+        DocTabs.IsVisible = _tabs.Count > 1;
+
+        if (!ReferenceEquals(DocTabs.SelectedItem, tab))
+        {
+            _suppressTabEvents = true;
+            DocTabs.SelectedItem = tab;
+            _suppressTabEvents = false;
+        }
+
+        ActivateTab(tab);
     }
 
     private void ShowOpenError(Exception ex)
@@ -317,18 +459,27 @@ public partial class MainView : UserControl
 
     private void Refresh(bool preserveScroll = true)
     {
-        if (_markdown.Trim().Length == 0)
+        if (_current == null)
         {
-            _emptyTitle = _file != null || _filePath != null ? "این فایل خالی است." : null;
             ShowEmptyState();
             return;
         }
 
-        var offset = preserveScroll ? DocScroll.Offset.Y : 0;
+        if (_current.Markdown.Trim().Length == 0)
+        {
+            _current.EmptyTitle = "این فایل خالی است.";
+            _current.Rendered = null;
+            ShowEmptyState();
+            return;
+        }
 
-        _rendered = MarkdownRenderer.Render(_markdown, _options);
+        _current.EmptyTitle = null;
+
+        var offset = preserveScroll ? DocScroll.Offset.Y : _current.ScrollOffset;
+
+        _current.Rendered = MarkdownRenderer.Render(_current.Markdown, _options);
         DocHost.Children.Clear();
-        DocHost.Children.Add(_rendered.Root);
+        DocHost.Children.Add(_current.Rendered.Root);
 
         if (offset > 0)
         {
@@ -340,9 +491,9 @@ public partial class MainView : UserControl
     {
         _options.BaseFontSize = size;
 
-        if (_rendered != null)
+        if (_current?.Rendered is { } rendered)
         {
-            foreach (var apply in _rendered.SizeAppliers)
+            foreach (var apply in rendered.SizeAppliers)
             {
                 apply(size);
             }
@@ -381,11 +532,16 @@ public partial class MainView : UserControl
 
     private void ShowEmptyState()
     {
-        _rendered = null;
+        if (_current != null)
+        {
+            _current.Rendered = null;
+        }
+
         DocHost.Children.Clear();
 
         var direction = _options.Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         var align = _options.Rtl ? TextAlignment.Right : TextAlignment.Left;
+        var emptyTitle = _current?.EmptyTitle;
         var panel = new StackPanel
         {
             Margin = new Thickness(30, 44, 30, 30),
@@ -394,7 +550,7 @@ public partial class MainView : UserControl
 
         panel.Children.Add(new TextBlock
         {
-            Text = _emptyTitle ?? "فایلی باز نشده است",
+            Text = emptyTitle ?? "فایلی باز نشده است",
             FontSize = _options.BaseFontSize * 1.5,
             FontWeight = FontWeight.SemiBold,
             Foreground = new SolidColorBrush(Color.Parse("#24292F")),
@@ -404,7 +560,7 @@ public partial class MainView : UserControl
 
         panel.Children.Add(new TextBlock
         {
-            Text = _emptyTitle == null
+            Text = emptyTitle == null
                 ? "برای شروع، یک فایل Markdown را باز کنید یا آن را روی همین پنجره بکشید."
                 : "فایل انتخاب‌شده هیچ محتوایی ندارد.",
             FontSize = _options.BaseFontSize,
@@ -416,7 +572,8 @@ public partial class MainView : UserControl
 
         foreach (var (keys, description) in new (string, string)[]
                  {
-                     ("Ctrl + O", "باز کردن فایل"),
+                     ("Ctrl + O", "باز کردن فایل (تب جدید)"),
+                     ("Ctrl + W", "بستن تب فعلی"),
                      ("F5", "بازخوانی فایل فعلی"),
                      ("Ctrl + + / Ctrl + −", "بزرگ و کوچک کردن فونت"),
                      ("Ctrl + 0", "بازگشت فونت به اندازه پیش‌فرض"),
@@ -477,16 +634,20 @@ public partial class MainView : UserControl
     {
         FileText.Foreground = new SolidColorBrush(Color.Parse("#4B5563"));
 
-        if (_file == null && _filePath == null)
+        if (_current == null)
         {
             FileText.Text = "فایلی باز نشده است";
             CountText.Text = string.Empty;
             return;
         }
 
-        FileText.Text = _filePath ?? _displayName;
-        var words = Regex.Matches(_markdown, @"[\p{L}\p{N}]+").Count;
-        CountText.Text = string.Format(CultureInfo.CurrentCulture, "{0:N0} کلمه · {1:N0} کاراکتر", words, _markdown.Length);
+        FileText.Text = _current.Path ?? _current.Header;
+        var words = Regex.Matches(_current.Markdown, @"[\p{L}\p{N}]+").Count;
+        CountText.Text = string.Format(
+            CultureInfo.CurrentCulture,
+            "{0:N0} کلمه · {1:N0} کاراکتر",
+            words,
+            _current.Markdown.Length);
     }
 
     private static string ReadText(byte[] bytes)

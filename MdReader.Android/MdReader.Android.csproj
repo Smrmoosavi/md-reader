@@ -11,8 +11,8 @@
     <RootNamespace>MdReader.Droid</RootNamespace>
     <AssemblyName>MdReader.Android</AssemblyName>
     <ApplicationId>com.smrmoosavi.mdreader</ApplicationId>
-    <ApplicationDisplayVersion>1.0.3</ApplicationDisplayVersion>
-    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
