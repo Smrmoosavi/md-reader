@@ -1,31 +1,76 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="MdReader.App"
-             RequestedThemeVariant="Light">
+             x:Class="MdReader.App">
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://MdReader.Shared/Localization/Strings.fa.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="PanelBackground" Color="#F6F8FA" />
+                    <SolidColorBrush x:Key="PanelAltBackground" Color="#F8FAFC" />
+                    <SolidColorBrush x:Key="PanelBorder" Color="#E3E8EE" />
+                    <SolidColorBrush x:Key="AppText" Color="#1F2328" />
+                    <SolidColorBrush x:Key="AppTextMuted" Color="#6B7580" />
+                    <SolidColorBrush x:Key="AppTextSoft" Color="#98A2B3" />
+                    <SolidColorBrush x:Key="AppLink" Color="#0B62C4" />
+                    <SolidColorBrush x:Key="AppHover" Color="#E4EBF3" />
+                    <SolidColorBrush x:Key="AppActiveBackground" Color="#E4EBF3" />
+                    <SolidColorBrush x:Key="InputBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="AppDanger" Color="#B42318" />
+                    <SolidColorBrush x:Key="MatchBackground" Color="#FFE28A" />
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackground" Color="#15181C" />
+                    <SolidColorBrush x:Key="PanelBackground" Color="#1C2025" />
+                    <SolidColorBrush x:Key="PanelAltBackground" Color="#191D22" />
+                    <SolidColorBrush x:Key="PanelBorder" Color="#2C323A" />
+                    <SolidColorBrush x:Key="AppText" Color="#E6E9EC" />
+                    <SolidColorBrush x:Key="AppTextMuted" Color="#A0AAB5" />
+                    <SolidColorBrush x:Key="AppTextSoft" Color="#7C8794" />
+                    <SolidColorBrush x:Key="AppLink" Color="#6FB3F7" />
+                    <SolidColorBrush x:Key="AppHover" Color="#262C33" />
+                    <SolidColorBrush x:Key="AppActiveBackground" Color="#262C33" />
+                    <SolidColorBrush x:Key="InputBackground" Color="#20252B" />
+                    <SolidColorBrush x:Key="AppDanger" Color="#FF8A80" />
+                    <SolidColorBrush x:Key="MatchBackground" Color="#6B5320" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
 
         <Style Selector="Button.tool">
-            <Setter Property="Background" Value="#FFFFFF" />
-            <Setter Property="BorderBrush" Value="#D5DCE3" />
+            <Setter Property="Background" Value="{DynamicResource InputBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PanelBorder}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Padding" Value="12,6" />
             <Setter Property="Margin" Value="0,0,6,6" />
             <Setter Property="MinHeight" Value="30" />
-            <Setter Property="Foreground" Value="#24292F" />
+            <Setter Property="Foreground" Value="{DynamicResource AppText}" />
             <Setter Property="Cursor" Value="Hand" />
         </Style>
 
         <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#EDF1F5" />
+            <Setter Property="Background" Value="{DynamicResource AppHover}" />
+        </Style>
+
+        <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AppActiveBackground}" />
         </Style>
 
         <Style Selector="TextBlock.label">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="12,0,6,6" />
-            <Setter Property="Foreground" Value="#6B7580" />
+            <Setter Property="Foreground" Value="{DynamicResource AppTextMuted}" />
         </Style>
     </Application.Styles>
 </Application>

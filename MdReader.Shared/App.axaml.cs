@@ -19,6 +19,13 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        var settings = AppSettings.Load();
+
+        // The theme and the language are applied before the first view is built, so the window
+        // never flashes the wrong palette.
+        AppTheme.Apply(settings.Theme);
+        Lang.Apply(settings.Language);
+
         switch (ApplicationLifetime)
         {
             case IClassicDesktopStyleApplicationLifetime desktop:
@@ -39,6 +46,12 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
+    /// <summary>The window background for the current theme, used by the chrome around the view.</summary>
+    public static IBrush WindowBackground() =>
+        Current is { } app && app.TryFindResource("AppBackground", out var value) && value is IBrush brush
+            ? brush
+            : Brushes.White;
+
     private static Window CreateDesktopWindow(string[] args)
     {
         var view = new MainView();
@@ -51,7 +64,7 @@ public partial class App : Application
             MinWidth = MinimumWidth,
             MinHeight = MinimumHeight,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            Background = new SolidColorBrush(Color.Parse("#FFFFFF")),
+            Background = WindowBackground(),
             FontSize = 13,
             Content = view,
         };

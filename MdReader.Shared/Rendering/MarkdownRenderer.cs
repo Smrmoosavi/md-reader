@@ -40,6 +40,12 @@ public sealed class MarkdownRenderOptions
 
     /// <summary>Largest width an image may take, in pixels.</summary>
     public double MaxImageWidth { get; set; } = 560;
+
+    /// <summary>Colours of the rendered document (light by default, so PDF pages stay white).</summary>
+    public MarkdownPalette Palette { get; set; } = MarkdownPalette.Light;
+
+    /// <summary>Maximum width of the text column; 0 lets the document use the whole viewport.</summary>
+    public double MaxContentWidth { get; set; }
 }
 
 /// <summary>One entry of the document outline (a heading and the control it rendered into).</summary>
@@ -113,25 +119,7 @@ public static class MarkdownRenderer
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
-    private static readonly IBrush TextBrush = Frozen(0x1F, 0x23, 0x28);
-    private static readonly IBrush MutedBrush = Frozen(0x6B, 0x72, 0x80);
-    private static readonly IBrush LinkBrush = Frozen(0x0B, 0x62, 0xC4);
-    private static readonly IBrush RuleBrush = Frozen(0xE3, 0xE8, 0xEE);
-    private static readonly IBrush CodeBackground = Frozen(0xF4, 0xF6, 0xF8);
-    private static readonly IBrush CodeBorder = Frozen(0xE1, 0xE6, 0xEB);
-    private static readonly IBrush InlineCodeBackground = Frozen(0xEF, 0xF2, 0xF5);
-    private static readonly IBrush QuoteBorder = Frozen(0xD5, 0xDD, 0xE5);
-    private static readonly IBrush TableBorder = Frozen(0xDD, 0xE3, 0xE9);
-    private static readonly IBrush TableHeaderBackground = Frozen(0xF5, 0xF7, 0xF9);
-    private static readonly IBrush SearchBrush = Frozen(0xFF, 0xE2, 0x8A);
-    private static readonly IBrush Transparent = new SolidColorBrush(Colors.Transparent);
-
-    // Code highlighting colours (GitHub light palette).
-    private static readonly IBrush CodeKeywordBrush = Frozen(0xCF, 0x22, 0x2E);
-    private static readonly IBrush CodeStringBrush = Frozen(0x0A, 0x30, 0x69);
-    private static readonly IBrush CodeCommentBrush = Frozen(0x6E, 0x77, 0x81);
-    private static readonly IBrush CodeNumberBrush = Frozen(0x05, 0x50, 0xAE);
-    private static readonly IBrush CodeTypeBrush = Frozen(0x82, 0x50, 0xDF);
+    private static IBrush Transparent { get; } = new SolidColorBrush(Colors.Transparent);
 
     private static readonly double[] HeadingFactors = { 0, 1.9, 1.55, 1.32, 1.16, 1.06, 1.0 };
 
@@ -145,6 +133,8 @@ public static class MarkdownRenderer
         public double BaseSize => Options.BaseFontSize;
         public FlowDirection Direction => Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         public TextAlignment Align => Rtl ? TextAlignment.Right : TextAlignment.Left;
+
+        public MarkdownPalette Palette => Options.Palette;
 
         public FontFamily Font => string.IsNullOrEmpty(Options.FontFamilyName)
             ? FontFamily.Default
@@ -160,6 +150,12 @@ public static class MarkdownRenderer
             Margin = new Thickness(30, 22, 30, 48),
             FlowDirection = options.Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
         };
+
+        if (options.MaxContentWidth > 0)
+        {
+            panel.MaxWidth = options.MaxContentWidth;
+            panel.HorizontalAlignment = HorizontalAlignment.Center;
+        }
 
         var result = new RenderedMarkdown(panel);
         var context = new RenderContext { Source = markdown, Options = options, Result = result };
@@ -199,7 +195,7 @@ public static class MarkdownRenderer
                 target.Children.Add(new Border
                 {
                     Height = 1,
-                    Background = RuleBrush,
+                    Background = context.Palette.Rule,
                     Margin = new Thickness(0, 14, 0, 18),
                 });
                 break;
@@ -234,7 +230,7 @@ public static class MarkdownRenderer
             FontFamily = mono ? new FontFamily(MonoFontFamily) : context.Font,
             FontSize = context.BaseSize * sizeFactor,
             FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
-            Foreground = TextBrush,
+            Foreground = context.Palette.Text,
             FlowDirection = leftToRight ? FlowDirection.LeftToRight : context.Direction,
             TextAlignment = align ?? (leftToRight ? TextAlignment.Left : context.Align),
             LineHeight = context.BaseSize * sizeFactor * lineHeightFactor,
@@ -277,7 +273,7 @@ public static class MarkdownRenderer
             var border = new Border
             {
                 Child = text,
-                BorderBrush = RuleBrush,
+                BorderBrush = context.Palette.Rule,
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(0, 0, 0, 6),
                 Margin = new Thickness(0, 20, 0, 6),
@@ -296,7 +292,7 @@ public static class MarkdownRenderer
         var title = PlainText(block.Inline);
         if (string.IsNullOrWhiteSpace(title))
         {
-            title = $"بخش {context.Result.Outline.Count + 1}";
+            title = Lang.F("Section", context.Result.Outline.Count + 1);
         }
 
         context.Result.Outline.Add(new OutlineEntry(block.Level, title, rendered));
@@ -353,7 +349,7 @@ public static class MarkdownRenderer
         {
             FontFamily = new FontFamily(MonoFontFamily),
             FontSize = context.BaseSize * factor,
-            Foreground = TextBrush,
+            Foreground = context.Palette.Text,
             TextWrapping = TextWrapping.NoWrap,
             FlowDirection = FlowDirection.LeftToRight,
             TextAlignment = TextAlignment.Left,
@@ -399,18 +395,114 @@ public static class MarkdownRenderer
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
         };
 
+        // Line numbers sit in their own column so they stay put while the code scrolls sideways.
+        var code = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+            FlowDirection = FlowDirection.LeftToRight,
+        };
+
+        var lineCount = SplitLines(text).Count;
+        if (lineCount > 2)
+        {
+            var gutter = new TextBlock
+            {
+                Text = string.Join("\n", Enumerable.Range(1, lineCount)),
+                FontFamily = new FontFamily(MonoFontFamily),
+                FontSize = context.BaseSize * factor,
+                LineHeight = context.BaseSize * factor * lineFactor,
+                Foreground = context.Palette.Muted,
+                TextAlignment = TextAlignment.Right,
+                MinWidth = 18,
+                Margin = new Thickness(0, 0, 10, 0),
+            };
+
+            context.Result.SizeAppliers.Add(size =>
+            {
+                gutter.FontSize = size * factor;
+                gutter.LineHeight = size * factor * lineFactor;
+            });
+
+            code.Children.Add(gutter);
+        }
+
+        Grid.SetColumn(scroller, 1);
+        code.Children.Add(scroller);
+
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        header.Children.Add(new TextBlock
+        {
+            Text = language?.Trim() ?? string.Empty,
+            FontSize = 11,
+            FontFamily = new FontFamily(MonoFontFamily),
+            Foreground = context.Palette.Muted,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsVisible = !string.IsNullOrWhiteSpace(language),
+            Margin = new Thickness(0, 0, 0, 4),
+        });
+
+        var copy = new Button
+        {
+            Content = Lang.T("CodeCopy"),
+            FontSize = 11,
+            Padding = new Thickness(7, 1),
+            MinHeight = 0,
+            MinWidth = 0,
+            Margin = new Thickness(0, 0, 0, 4),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = context.Palette.Link,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+
+        ToolTip.SetTip(copy, Lang.T("CodeCopy"));
+        var source = text;
+        copy.Click += async (_, _) => await CopyTextAsync(copy, source);
+        Grid.SetColumn(copy, 1);
+        header.Children.Add(copy);
+
+        var body = new StackPanel();
+        body.Children.Add(header);
+        body.Children.Add(code);
+
         var border = new Border
         {
-            Background = CodeBackground,
-            BorderBrush = CodeBorder,
+            Background = context.Palette.CodeBackground,
+            BorderBrush = context.Palette.CodeBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(12, 9, 12, 9),
+            Padding = new Thickness(12, 7, 12, 9),
             Margin = new Thickness(0, 4, 0, 14),
-            Child = scroller,
+            Child = body,
         };
 
         target.Children.Add(border);
+    }
+
+    /// <summary>Copies one code block as plain text; the status bar reports nothing, so a failed
+    /// clipboard write stays silent instead of interrupting the reader.</summary>
+    private static async System.Threading.Tasks.Task CopyTextAsync(Control source, string text)
+    {
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(source)?.Clipboard;
+            if (clipboard == null)
+            {
+                return;
+            }
+
+            var item = new DataTransferItem();
+            item.Set(DataFormat.Text, text);
+
+            var data = new DataTransfer();
+            data.Add(item);
+            await clipboard.SetDataAsync(data);
+        }
+        catch (Exception)
+        {
+            // The clipboard may be unavailable; copying is best-effort.
+        }
     }
 
     private static void AddList(ListBlock block, Panel target, RenderContext context, int depth)
@@ -439,7 +531,7 @@ public static class MarkdownRenderer
             {
                 Text = marker,
                 FontSize = context.BaseSize,
-                Foreground = TextBrush,
+                Foreground = context.Palette.Text,
                 FlowDirection = context.Direction,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 0, 8, 0),
@@ -493,7 +585,7 @@ public static class MarkdownRenderer
         target.Children.Add(new Border
         {
             Child = content,
-            BorderBrush = QuoteBorder,
+            BorderBrush = context.Palette.QuoteBorder,
             BorderThickness = new Thickness(3, 0, 0, 0),
             Padding = new Thickness(14, 0, 2, 0),
             Margin = new Thickness(0, 6, 0, 12),
@@ -543,8 +635,8 @@ public static class MarkdownRenderer
                 var border = new Border
                 {
                     Child = content,
-                    Background = row.IsHeader ? TableHeaderBackground : Transparent,
-                    BorderBrush = TableBorder,
+                    Background = row.IsHeader ? context.Palette.TableHeaderBackground : Transparent,
+                    BorderBrush = context.Palette.TableBorder,
                     BorderThickness = new Thickness(0, 0, 1, 1),
                     Padding = new Thickness(10, 6, 10, 6),
                 };
@@ -564,7 +656,7 @@ public static class MarkdownRenderer
         target.Children.Add(new Border
         {
             Child = grid,
-            BorderBrush = TableBorder,
+            BorderBrush = context.Palette.TableBorder,
             BorderThickness = new Thickness(1, 1, 0, 0),
             Margin = new Thickness(0, 6, 0, 16),
         });
@@ -695,13 +787,14 @@ public static class MarkdownRenderer
         var before = target.Count;
         AddRun(target, host, token.Text, new InlineStyle(), context);
 
+        var palette = context.Palette;
         var brush = token.Kind switch
         {
-            CodeTokenKind.Keyword => CodeKeywordBrush,
-            CodeTokenKind.String => CodeStringBrush,
-            CodeTokenKind.Comment => CodeCommentBrush,
-            CodeTokenKind.Number => CodeNumberBrush,
-            CodeTokenKind.Type => CodeTypeBrush,
+            CodeTokenKind.Keyword => palette.Keyword,
+            CodeTokenKind.String => palette.String,
+            CodeTokenKind.Comment => palette.Comment,
+            CodeTokenKind.Number => palette.Number,
+            CodeTokenKind.Type => palette.Type,
             _ => null,
         };
 
@@ -731,7 +824,7 @@ public static class MarkdownRenderer
         var link = new TextBlock
         {
             Text = text,
-            Foreground = LinkBrush,
+            Foreground = context.Palette.Link,
             TextDecorations = TextDecorations.Underline,
             Cursor = new Cursor(StandardCursorType.Hand),
             FontWeight = style.Bold ? FontWeight.SemiBold : FontWeight.Normal,
@@ -793,7 +886,7 @@ public static class MarkdownRenderer
             }
 
             var match = CreateRun(text.Substring(found, query.Length), style, context);
-            match.Background = SearchBrush;
+            match.Background = context.Palette.Search;
             target.Add(match);
             context.Result.MatchHosts.Add(host);
 
@@ -808,14 +901,14 @@ public static class MarkdownRenderer
         if (style.Bold) run.FontWeight = FontWeight.SemiBold;
         if (style.Italic) run.FontStyle = FontStyle.Italic;
         if (style.Strike) run.TextDecorations = TextDecorations.Strikethrough;
-        if (style.Muted) run.Foreground = MutedBrush;
+        if (style.Muted) run.Foreground = context.Palette.Muted;
 
         if (style.Code)
         {
             const double factor = 0.9;
             run.FontFamily = new FontFamily(MonoFontFamily);
-            run.Background = InlineCodeBackground;
-            run.Foreground = TextBrush;
+            run.Background = context.Palette.InlineCodeBackground;
+            run.Foreground = context.Palette.Text;
             run.FontSize = context.BaseSize * factor;
             context.Result.SizeAppliers.Add(size => run.FontSize = size * factor);
         }
@@ -950,8 +1043,6 @@ public static class MarkdownRenderer
             // Opening a browser is best-effort; ignore failures.
         }
     }
-
-    private static IBrush Frozen(byte r, byte g, byte b) => new SolidColorBrush(Color.FromRgb(r, g, b));
 
     private readonly struct InlineStyle
     {

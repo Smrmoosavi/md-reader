@@ -7,10 +7,10 @@ using System.Text;
 namespace MdReader;
 
 /// <summary>
-/// User preferences (font, size, direction, outline visibility, auto-reload, library folder,
-/// recently opened files and the tabs of the last session) stored as a tiny <c>key=value</c>
-/// file in the per-user application data folder, so they survive a restart on Windows, Linux,
-/// macOS and Android without pulling in a serialization stack.
+/// User preferences (font, size, direction, theme, language, text width, outline visibility,
+/// auto-reload, library folder, recently opened files and the tabs of the last session) stored as a
+/// tiny <c>key=value</c> file in the per-user application data folder, so they survive a restart on
+/// Windows, Linux, macOS and Android without pulling in a serialization stack.
 /// </summary>
 public sealed class AppSettings
 {
@@ -26,7 +26,17 @@ public sealed class AppSettings
 
     public double BaseFontSize { get; set; } = 16;
 
-    public bool Rtl { get; set; }
+    /// <summary><c>auto</c>, <c>rtl</c> or <c>ltr</c>.</summary>
+    public string Direction { get; set; } = "auto";
+
+    /// <summary><c>system</c>, <c>light</c> or <c>dark</c>.</summary>
+    public string Theme { get; set; } = AppTheme.System;
+
+    /// <summary><c>fa</c> or <c>en</c>.</summary>
+    public string Language { get; set; } = Lang.Persian;
+
+    /// <summary><c>narrow</c>, <c>normal</c> or <c>wide</c>.</summary>
+    public string Width { get; set; } = "normal";
 
     public bool OutlineVisible { get; set; }
 
@@ -87,8 +97,34 @@ public sealed class AppSettings
                     case "size" when double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var size):
                         settings.BaseFontSize = size;
                         break;
+
+                    // Older versions stored a single RTL flag; keep honouring it.
                     case "rtl":
-                        settings.Rtl = value == "1";
+                        settings.Direction = value == "1" ? "rtl" : "auto";
+                        break;
+                    case "direction" when value.Length > 0:
+                        settings.Direction = value.ToLowerInvariant() switch
+                        {
+                            "rtl" => "rtl",
+                            "ltr" => "ltr",
+                            _ => "auto",
+                        };
+                        break;
+                    case "theme" when value.Length > 0:
+                        settings.Theme = AppTheme.Normalize(value);
+                        break;
+                    case "language" when value.Length > 0:
+                        settings.Language = value.Equals(Lang.English, StringComparison.OrdinalIgnoreCase)
+                            ? Lang.English
+                            : Lang.Persian;
+                        break;
+                    case "width" when value.Length > 0:
+                        settings.Width = value.ToLowerInvariant() switch
+                        {
+                            "narrow" => "narrow",
+                            "wide" => "wide",
+                            _ => "normal",
+                        };
                         break;
                     case "outline":
                         settings.OutlineVisible = value == "1";
@@ -133,7 +169,10 @@ public sealed class AppSettings
             var builder = new StringBuilder();
             builder.AppendLine($"font={FontFamilyName}");
             builder.AppendLine("size=" + BaseFontSize.ToString("0.##", CultureInfo.InvariantCulture));
-            builder.AppendLine($"rtl={(Rtl ? 1 : 0)}");
+            builder.AppendLine($"direction={Direction}");
+            builder.AppendLine($"theme={Theme}");
+            builder.AppendLine($"language={Language}");
+            builder.AppendLine($"width={Width}");
             builder.AppendLine($"outline={(OutlineVisible ? 1 : 0)}");
             builder.AppendLine($"autoreload={(AutoReload ? 1 : 0)}");
             builder.AppendLine($"library={LibraryPath}");

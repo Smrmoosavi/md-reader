@@ -1,0 +1,117 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+    <!-- Toolbar -->
+    <sys:String x:Key="Open">باز کردن فایل</sys:String>
+    <sys:String x:Key="Reload">بازخوانی</sys:String>
+    <sys:String x:Key="Direction">جهت</sys:String>
+    <sys:String x:Key="DirectionAuto">خودکار</sys:String>
+    <sys:String x:Key="DirectionRtl">راست به چپ</sys:String>
+    <sys:String x:Key="DirectionLtr">چپ به راست</sys:String>
+    <sys:String x:Key="Font">فونت</sys:String>
+    <sys:String x:Key="Size">اندازه</sys:String>
+    <sys:String x:Key="ZoomInTip">بزرگ‌تر کردن فونت (Ctrl + چرخ ماوس به بالا)</sys:String>
+    <sys:String x:Key="ZoomOutTip">کوچک‌تر کردن فونت (Ctrl + چرخ ماوس به پایین)</sys:String>
+    <sys:String x:Key="Search">جست‌وجو</sys:String>
+    <sys:String x:Key="SearchTip">جست‌وجو در سند (Ctrl + F)</sys:String>
+    <sys:String x:Key="Outline">فهرست</sys:String>
+    <sys:String x:Key="OutlineTip">نمایش یا پنهان کردن فهرست مطالب</sys:String>
+    <sys:String x:Key="Library">کتابخانه</sys:String>
+    <sys:String x:Key="LibraryTip">نمایش پوشه‌ی یادداشت‌ها و جست‌وجو بین آن‌ها</sys:String>
+    <sys:String x:Key="AutoReload">بازخوانی خودکار</sys:String>
+    <sys:String x:Key="AutoReloadTip">اگر فایل روی دیسک تغییر کرد، خودکار دوباره خوانده شود</sys:String>
+    <sys:String x:Key="Marks">نشانک‌ها</sys:String>
+    <sys:String x:Key="MarksTip">نشانک، یادداشت و ادامه‌ی مطالعه</sys:String>
+    <sys:String x:Key="Theme">تم</sys:String>
+    <sys:String x:Key="ThemeLight">روشن</sys:String>
+    <sys:String x:Key="ThemeDark">تیره</sys:String>
+    <sys:String x:Key="ThemeSystem">سیستم</sys:String>
+    <sys:String x:Key="Language">زبان</sys:String>
+    <sys:String x:Key="Width">عرض متن</sys:String>
+    <sys:String x:Key="WidthNarrow">باریک</sys:String>
+    <sys:String x:Key="WidthNormal">معمولی</sys:String>
+    <sys:String x:Key="WidthWide">پهناور</sys:String>
+    <sys:String x:Key="Focus">تمرکز</sys:String>
+    <sys:String x:Key="FocusTip">حالت تمرکز: پنهان کردن نوارها (F11)</sys:String>
+    <sys:String x:Key="Export">خروجی</sys:String>
+    <sys:String x:Key="ExportTip">کپی به‌صورت متن غنی یا ذخیره‌ی PDF</sys:String>
+    <sys:String x:Key="CopyRichText">کپی متن (غنی)</sys:String>
+    <sys:String x:Key="SavePdf">ذخیره به PDF…</sys:String>
+
+    <!-- Tabs and search bar -->
+    <sys:String x:Key="CloseTab">بستن این تب</sys:String>
+    <sys:String x:Key="SearchPlaceholder">متن موردنظر را بنویسید…</sys:String>
+    <sys:String x:Key="SearchHint">Enter = نتیجه بعدی، Shift + Enter = نتیجه قبلی، Escape = بستن</sys:String>
+    <sys:String x:Key="Previous">قبلی</sys:String>
+    <sys:String x:Key="Next">بعدی</sys:String>
+    <sys:String x:Key="NoResults">نتیجه‌ای نیست</sys:String>
+
+    <!-- Outline -->
+    <sys:String x:Key="OutlineTitle">فهرست مطالب</sys:String>
+    <sys:String x:Key="OutlineEmpty">این سند تیتر ندارد.</sys:String>
+    <sys:String x:Key="Section">بخش {0}</sys:String>
+
+    <!-- Library -->
+    <sys:String x:Key="LibraryTitle">کتابخانه</sys:String>
+    <sys:String x:Key="ChooseFolder">انتخاب پوشه…</sys:String>
+    <sys:String x:Key="NoFolder">پوشه‌ای انتخاب نشده است.</sys:String>
+    <sys:String x:Key="LibraryPlaceholder">جست‌وجو در نام و متن فایل‌ها…</sys:String>
+    <sys:String x:Key="FolderUnsupported">این سیستم انتخاب پوشه را پشتیبانی نمی‌کند.</sys:String>
+    <sys:String x:Key="FolderReadError">پوشه خوانده نشد: {0}</sys:String>
+    <sys:String x:Key="SearchFailed">جست‌وجو انجام نشد: {0}</sys:String>
+    <sys:String x:Key="FileCount">{0} فایل</sys:String>
+    <sys:String x:Key="ResultCount">{0} نتیجه</sys:String>
+    <sys:String x:Key="Indexing">در حال فهرست‌کردن… {0} فایل</sys:String>
+    <sys:String x:Key="LibraryAndroidHint">پوشه‌ی انتخاب‌شده تا پایان این نشست باز می‌ماند.</sys:String>
+
+    <!-- Marks -->
+    <sys:String x:Key="MarksTitle">نشانک‌ها و یادداشت‌ها</sys:String>
+    <sys:String x:Key="MarksEmpty">هنوز نشانکی برای این فایل اضافه نشده است.</sys:String>
+    <sys:String x:Key="AddBookmark">افزودن نشانک</sys:String>
+    <sys:String x:Key="AddNote">افزودن یادداشت</sys:String>
+    <sys:String x:Key="NotePlaceholder">یادداشت برای این نقطه…</sys:String>
+    <sys:String x:Key="BookmarkLabel">نشانک {0}٪</sys:String>
+    <sys:String x:Key="DeleteMark">حذف</sys:String>
+    <sys:String x:Key="ResumeTip">با باز کردن دوباره، از همین نقطه ادامه می‌دهید.</sys:String>
+
+    <!-- Status bar -->
+    <sys:String x:Key="NoFile">فایلی باز نشده است</sys:String>
+    <sys:String x:Key="ProgressTip">درصد خوانده‌شده از سند</sys:String>
+    <sys:String x:Key="WordsFormat">{0:N0} کلمه · {1:N0} کاراکتر</sys:String>
+    <sys:String x:Key="MinutesFormat">{0} دقیقه مطالعه</sys:String>
+
+    <!-- Empty state -->
+    <sys:String x:Key="NoFileTitle">فایلی باز نشده است</sys:String>
+    <sys:String x:Key="NoFileHint">برای شروع، یک فایل Markdown را باز کنید یا آن را روی همین پنجره بکشید.</sys:String>
+    <sys:String x:Key="EmptyFileTitle">این فایل خالی است.</sys:String>
+    <sys:String x:Key="EmptyFileHint">فایل انتخاب‌شده هیچ محتوایی ندارد.</sys:String>
+    <sys:String x:Key="Recent">اخیراً باز شده</sys:String>
+    <sys:String x:Key="ShortcutOpen">باز کردن فایل (تب جدید)</sys:String>
+    <sys:String x:Key="ShortcutClose">بستن تب فعلی</sys:String>
+    <sys:String x:Key="ShortcutSearch">جست‌وجو در سند (Enter = نتیجه بعدی)</sys:String>
+    <sys:String x:Key="ShortcutReload">بازخوانی فایل فعلی</sys:String>
+    <sys:String x:Key="ShortcutPdf">ذخیره به PDF</sys:String>
+    <sys:String x:Key="ShortcutCopy">کپی متن به‌صورت غنی</sys:String>
+    <sys:String x:Key="ShortcutZoom">بزرگ و کوچک کردن فونت</sys:String>
+    <sys:String x:Key="ShortcutReset">بازگشت فونت به اندازه پیش‌فرض</sys:String>
+    <sys:String x:Key="ShortcutFocus">حالت تمرکز</sys:String>
+
+    <!-- Messages -->
+    <sys:String x:Key="Copied">متن به‌صورت غنی کپی شد.</sys:String>
+    <sys:String x:Key="CopyFailed">کپی نشد: {0}</sys:String>
+    <sys:String x:Key="SaveUnsupported">ذخیره‌ی فایل در این سیستم پشتیبانی نمی‌شود.</sys:String>
+    <sys:String x:Key="PdfTitle">ذخیره به PDF</sys:String>
+    <sys:String x:Key="PdfSaved">PDF ذخیره شد ({0} صفحه).</sys:String>
+    <sys:String x:Key="PdfFailed">PDF ذخیره نشد: {0}</sys:String>
+    <sys:String x:Key="OpenFailed">فایل باز نشد: {0}</sys:String>
+    <sys:String x:Key="CodeCopy">کپی</sys:String>
+    <sys:String x:Key="CodeCopied">کد کپی شد.</sys:String>
+    <sys:String x:Key="MarkAdded">نشانک اضافه شد.</sys:String>
+    <sys:String x:Key="NoteAdded">یادداشت اضافه شد.</sys:String>
+    <sys:String x:Key="FilePickerTitle">انتخاب فایل Markdown</sys:String>
+    <sys:String x:Key="MarkdownFiles">فایل‌های Markdown</sys:String>
+    <sys:String x:Key="TextFiles">فایل متنی</sys:String>
+    <sys:String x:Key="FolderPickerTitle">انتخاب پوشه‌ی یادداشت‌ها</sys:String>
+
+</ResourceDictionary>

@@ -3,7 +3,7 @@
              xmlns:local="using:MdReader"
              xmlns:rendering="using:MdReader.Rendering"
              x:Class="MdReader.MainView"
-             Background="#FFFFFF"
+             Background="{DynamicResource AppBackground}"
              FontSize="13">
 
     <UserControl.Styles>
@@ -20,10 +20,16 @@
         <Style Selector="Button.tabclose:pointerover">
             <Setter Property="Opacity" Value="1" />
         </Style>
+        <!-- Tab titles keep their own size on every platform; Windows otherwise inherits a much
+             larger header font from the Fluent theme. -->
         <Style Selector="TabStrip > TabItem">
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="10,1" />
             <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TabStrip > TabItem TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.outline">
             <Setter Property="Background" Value="Transparent" />
@@ -32,20 +38,20 @@
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="MinWidth" Value="0" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="#3B4450" />
+            <Setter Property="Foreground" Value="{DynamicResource AppText}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Right" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
         <Style Selector="Button.outline:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#E4EBF3" />
+            <Setter Property="Background" Value="{DynamicResource AppHover}" />
         </Style>
         <Style Selector="Button.outline.active /template/ ContentPresenter">
-            <Setter Property="Background" Value="#E4EBF3" />
+            <Setter Property="Background" Value="{DynamicResource AppActiveBackground}" />
         </Style>
         <Style Selector="Button.outline.active">
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#0B62C4" />
+            <Setter Property="Foreground" Value="{DynamicResource AppLink}" />
         </Style>
         <Style Selector="Button.outline TextBlock">
             <Setter Property="TextWrapping" Value="NoWrap" />
@@ -63,39 +69,74 @@
             <Setter Property="Cursor" Value="Hand" />
         </Style>
         <Style Selector="Button.library:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#E4EBF3" />
+            <Setter Property="Background" Value="{DynamicResource AppHover}" />
+        </Style>
+
+        <Style Selector="Button.mark">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.mark:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AppHover}" />
+        </Style>
+        <Style Selector="Button.markdelete">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.markdelete:pointerover">
+            <Setter Property="Opacity" Value="1" />
         </Style>
     </UserControl.Styles>
 
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
-        <Border Grid.Row="0"
-                Background="#F6F8FA"
-                BorderBrush="#E3E8EE"
+        <Border x:Name="ToolbarBorder"
+                Grid.Row="0"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorder}"
                 BorderThickness="0,0,0,1"
                 Padding="10,10,10,4">
-            <WrapPanel Orientation="Horizontal" FlowDirection="RightToLeft">
+            <WrapPanel x:Name="ToolbarPanel"
+                       Orientation="Horizontal"
+                       FlowDirection="RightToLeft">
                 <Button x:Name="OpenButton"
                         Classes="tool"
-                        Content="باز کردن فایل"
+                        Content="{DynamicResource Open}"
                         Click="OpenButton_Click" />
                 <Button x:Name="ReloadButton"
                         Classes="tool"
-                        Content="بازخوانی"
+                        Content="{DynamicResource Reload}"
                         Click="ReloadButton_Click"
                         IsEnabled="False" />
 
-                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="#E3E8EE" VerticalAlignment="Center" />
+                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="{DynamicResource PanelBorder}" VerticalAlignment="Center" />
 
-                <CheckBox x:Name="RtlCheckBox"
-                          Content="راست به چپ (RTL)"
+                <TextBlock Text="{DynamicResource Direction}" Classes="label" />
+                <ComboBox x:Name="DirectionCombo"
+                          Width="118"
+                          Margin="0,0,6,6"
+                          MinHeight="30"
                           VerticalAlignment="Center"
-                          Margin="0,0,16,6"
-                          IsCheckedChanged="RtlCheckBox_Changed" />
+                          SelectionChanged="DirectionCombo_Changed" />
 
-                <TextBlock Text="فونت" Classes="label" />
+                <TextBlock Text="{DynamicResource Font}" Classes="label" />
                 <ComboBox x:Name="FontCombo"
-                          Width="200"
+                          Width="180"
                           Margin="0,0,6,6"
                           MinHeight="30"
                           VerticalAlignment="Center"
@@ -107,7 +148,7 @@
                     </ComboBox.ItemTemplate>
                 </ComboBox>
 
-                <TextBlock Text="اندازه" Classes="label" />
+                <TextBlock Text="{DynamicResource Size}" Classes="label" />
                 <ComboBox x:Name="SizeCombo"
                           Width="72"
                           Margin="0,0,6,6"
@@ -118,41 +159,79 @@
                 <Button Classes="tool"
                         Content="A+"
                         Click="ZoomIn_Click"
-                        ToolTip.Tip="بزرگ‌تر کردن فونت (Ctrl + چرخ ماوس به بالا)" />
+                        ToolTip.Tip="{DynamicResource ZoomInTip}" />
                 <Button Classes="tool"
                         Content="A−"
                         Click="ZoomOut_Click"
-                        ToolTip.Tip="کوچک‌تر کردن فونت (Ctrl + چرخ ماوس به پایین)" />
+                        ToolTip.Tip="{DynamicResource ZoomOutTip}" />
 
-                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="#E3E8EE" VerticalAlignment="Center" />
+                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="{DynamicResource PanelBorder}" VerticalAlignment="Center" />
 
                 <Button Classes="tool"
-                        Content="جست‌وجو"
+                        Content="{DynamicResource Search}"
                         Click="SearchButton_Click"
-                        ToolTip.Tip="جست‌وجو در سند (Ctrl + F)" />
+                        ToolTip.Tip="{DynamicResource SearchTip}" />
                 <ToggleButton x:Name="TocToggle"
                               Classes="tool"
-                              Content="فهرست"
+                              Content="{DynamicResource Outline}"
                               IsCheckedChanged="TocToggle_Changed"
-                              ToolTip.Tip="نمایش یا پنهان کردن فهرست مطالب" />
+                              ToolTip.Tip="{DynamicResource OutlineTip}" />
                 <ToggleButton x:Name="LibraryToggle"
                               Classes="tool"
-                              Content="کتابخانه"
+                              Content="{DynamicResource Library}"
                               IsCheckedChanged="LibraryToggle_Changed"
-                              ToolTip.Tip="نمایش پوشه‌ی یادداشت‌ها و جست‌وجو بین آن‌ها" />
+                              ToolTip.Tip="{DynamicResource LibraryTip}" />
+                <ToggleButton x:Name="MarksToggle"
+                              Classes="tool"
+                              Content="{DynamicResource Marks}"
+                              IsCheckedChanged="MarksToggle_Changed"
+                              ToolTip.Tip="{DynamicResource MarksTip}" />
                 <CheckBox x:Name="AutoReloadCheck"
-                          Content="بازخوانی خودکار"
+                          Content="{DynamicResource AutoReload}"
                           VerticalAlignment="Center"
                           Margin="10,0,0,6"
                           IsCheckedChanged="AutoReloadCheck_Changed"
-                          ToolTip.Tip="اگر فایل روی دیسک تغییر کرد، خودکار دوباره خوانده شود" />
+                          ToolTip.Tip="{DynamicResource AutoReloadTip}" />
+
+                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="{DynamicResource PanelBorder}" VerticalAlignment="Center" />
+
+                <TextBlock Text="{DynamicResource Width}" Classes="label" />
+                <ComboBox x:Name="WidthCombo"
+                          Width="94"
+                          Margin="0,0,6,6"
+                          MinHeight="30"
+                          VerticalAlignment="Center"
+                          SelectionChanged="WidthCombo_Changed" />
+
+                <TextBlock Text="{DynamicResource Theme}" Classes="label" />
+                <ComboBox x:Name="ThemeCombo"
+                          Width="96"
+                          Margin="0,0,6,6"
+                          MinHeight="30"
+                          VerticalAlignment="Center"
+                          SelectionChanged="ThemeCombo_Changed" />
+
+                <TextBlock Text="{DynamicResource Language}" Classes="label" />
+                <ComboBox x:Name="LanguageCombo"
+                          Width="94"
+                          Margin="0,0,6,6"
+                          MinHeight="30"
+                          VerticalAlignment="Center"
+                          SelectionChanged="LanguageCombo_Changed" />
+
+                <ToggleButton x:Name="FocusToggle"
+                              Classes="tool"
+                              Content="{DynamicResource Focus}"
+                              Click="FocusToggle_Click"
+                              ToolTip.Tip="{DynamicResource FocusTip}" />
+
                 <Button Classes="tool"
-                        Content="خروجی"
-                        ToolTip.Tip="کپی به‌صورت متن غنی یا ذخیره‌ی PDF">
+                        Content="{DynamicResource Export}"
+                        ToolTip.Tip="{DynamicResource ExportTip}">
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedRight">
-                            <MenuItem Header="کپی متن (غنی)" Click="CopyRichText_Click" />
-                            <MenuItem Header="ذخیره به PDF…" Click="ExportPdf_Click" />
+                            <MenuItem Header="{DynamicResource CopyRichText}" Click="CopyRichText_Click" />
+                            <MenuItem Header="{DynamicResource SavePdf}" Click="ExportPdf_Click" />
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -161,7 +240,7 @@
 
         <TabStrip x:Name="DocTabs"
                   Grid.Row="1"
-                  Background="#F6F8FA"
+                  Background="{DynamicResource PanelBackground}"
                   FlowDirection="RightToLeft"
                   IsVisible="False"
                   SelectionChanged="DocTabs_SelectionChanged">
@@ -169,6 +248,7 @@
                 <DataTemplate x:DataType="local:DocumentTab">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <TextBlock Text="{Binding Header}"
+                                   FontSize="12"
                                    MaxWidth="220"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center"
@@ -176,7 +256,7 @@
                         <Button Classes="tabclose"
                                 Content="✕"
                                 Click="CloseTab_Click"
-                                ToolTip.Tip="بستن این تب" />
+                                ToolTip.Tip="{DynamicResource CloseTab}" />
                     </StackPanel>
                 </DataTemplate>
             </TabStrip.ItemTemplate>
@@ -184,84 +264,159 @@
 
         <Border x:Name="SearchBar"
                 Grid.Row="2"
-                Background="#F6F8FA"
-                BorderBrush="#E3E8EE"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorder}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6"
                 IsVisible="False">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" FlowDirection="RightToLeft">
+            <Grid x:Name="SearchBarGrid" ColumnDefinitions="*,Auto,Auto,Auto,Auto" FlowDirection="RightToLeft">
                 <TextBox x:Name="SearchBox"
                          Grid.Column="0"
                          MinHeight="30"
                          VerticalAlignment="Center"
                          VerticalContentAlignment="Center"
-                         PlaceholderText="متن موردنظر را بنویسید…"
+                         PlaceholderText="{DynamicResource SearchPlaceholder}"
                          TextChanged="SearchBox_TextChanged"
                          KeyDown="SearchBox_KeyDown" />
                 <TextBlock x:Name="SearchCountText"
                            Grid.Column="1"
                            Margin="12,0,12,0"
                            FontSize="12"
-                           Foreground="#6B7580"
+                           Foreground="{DynamicResource AppTextMuted}"
                            VerticalAlignment="Center"
-                           ToolTip.Tip="Enter = نتیجه بعدی، Shift + Enter = نتیجه قبلی، Escape = بستن" />
+                           ToolTip.Tip="{DynamicResource SearchHint}" />
                 <Button Grid.Column="2"
                         Classes="tool"
-                        Content="قبلی"
+                        Content="{DynamicResource Previous}"
                         Click="SearchPrev_Click" />
                 <Button Grid.Column="3"
                         Classes="tool"
-                        Content="بعدی"
+                        Content="{DynamicResource Next}"
                         Click="SearchNext_Click" />
                 <Button Grid.Column="4"
                         Classes="tool"
                         Content="✕"
                         Click="SearchClose_Click"
-                        ToolTip.Tip="بستن جست‌وجو (Escape)" />
+                        ToolTip.Tip="{DynamicResource SearchHint}" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
-            <Border x:Name="LibraryPanel"
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto">
+            <Border x:Name="MarksPanel"
                     Grid.Column="0"
-                    Width="290"
-                    Background="#F8FAFC"
-                    BorderBrush="#E3E8EE"
+                    Width="250"
+                    Background="{DynamicResource PanelAltBackground}"
+                    BorderBrush="{DynamicResource PanelBorder}"
                     BorderThickness="0,0,1,0"
                     Padding="8,10"
                     IsVisible="False">
-                <DockPanel LastChildFill="True" FlowDirection="RightToLeft">
+                <DockPanel x:Name="MarksDock" LastChildFill="True" FlowDirection="RightToLeft">
                     <TextBlock DockPanel.Dock="Top"
-                               Text="کتابخانه"
+                               Text="{DynamicResource MarksTitle}"
                                FontSize="12"
                                FontWeight="SemiBold"
-                               Foreground="#6B7580"
+                               Foreground="{DynamicResource AppTextMuted}"
+                               Margin="4,0,4,8" />
+                    <Button DockPanel.Dock="Top"
+                            Classes="tool"
+                            Content="{DynamicResource AddBookmark}"
+                            HorizontalAlignment="Stretch"
+                            Margin="0,0,0,6"
+                            Click="AddBookmark_Click" />
+                    <TextBox x:Name="NoteBox"
+                             DockPanel.Dock="Top"
+                             MinHeight="54"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             Margin="0,0,0,6"
+                             PlaceholderText="{DynamicResource NotePlaceholder}" />
+                    <Button DockPanel.Dock="Top"
+                            Classes="tool"
+                            Content="{DynamicResource AddNote}"
+                            HorizontalAlignment="Stretch"
+                            Margin="0,0,0,10"
+                            Click="AddNote_Click" />
+                    <TextBlock x:Name="MarksEmptyText"
+                               DockPanel.Dock="Top"
+                               Text="{DynamicResource MarksEmpty}"
+                               FontSize="11"
+                               Foreground="{DynamicResource AppTextSoft}"
+                               TextWrapping="Wrap"
+                               Margin="4,0,4,0" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="MarksList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:DocumentMark">
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <Button Classes="mark"
+                                                Grid.Column="1"
+                                                Click="MarkItem_Click"
+                                                ToolTip.Tip="{DynamicResource ResumeTip}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding Glyph}"
+                                                           FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Text}"
+                                                           FontSize="12"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="170"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Classes="markdelete"
+                                                Grid.Column="0"
+                                                Content="✕"
+                                                Click="MarkDelete_Click"
+                                                ToolTip.Tip="{DynamicResource DeleteMark}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <Border x:Name="LibraryPanel"
+                    Grid.Column="1"
+                    Width="290"
+                    Background="{DynamicResource PanelAltBackground}"
+                    BorderBrush="{DynamicResource PanelBorder}"
+                    BorderThickness="0,0,1,0"
+                    Padding="8,10"
+                    IsVisible="False">
+                <DockPanel x:Name="LibraryDock" LastChildFill="True" FlowDirection="RightToLeft">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="{DynamicResource LibraryTitle}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource AppTextMuted}"
                                Margin="4,0,4,6" />
                     <Button DockPanel.Dock="Top"
                             Classes="tool"
-                            Content="انتخاب پوشه…"
+                            Content="{DynamicResource ChooseFolder}"
                             HorizontalAlignment="Stretch"
                             Margin="0,0,0,6"
                             Click="ChooseLibraryFolder_Click" />
                     <TextBlock x:Name="LibraryPathText"
                                DockPanel.Dock="Top"
-                               Text="پوشه‌ای انتخاب نشده است."
+                               Text="{DynamicResource NoFolder}"
                                FontSize="11"
-                               Foreground="#98A2B3"
+                               Foreground="{DynamicResource AppTextSoft}"
                                TextTrimming="CharacterEllipsis"
                                Margin="4,0,4,8" />
                     <TextBox x:Name="LibrarySearchBox"
                              DockPanel.Dock="Top"
                              MinHeight="30"
                              Margin="0,0,0,6"
-                             PlaceholderText="جست‌وجو در نام و متن فایل‌ها…"
+                             PlaceholderText="{DynamicResource LibraryPlaceholder}"
                              TextChanged="LibrarySearchBox_TextChanged" />
                     <TextBlock x:Name="LibraryStatusText"
                                DockPanel.Dock="Bottom"
                                FontSize="11"
-                               Foreground="#98A2B3"
+                               Foreground="{DynamicResource AppTextSoft}"
                                Margin="4,6,4,0"
-                               TextTrimming="CharacterEllipsis" />
+                               TextWrapping="Wrap" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <ItemsControl x:Name="LibraryList">
                             <ItemsControl.ItemTemplate>
@@ -272,11 +427,38 @@
                                                        FontSize="12"
                                                        TextWrapping="NoWrap"
                                                        TextTrimming="CharacterEllipsis" />
+                                            <Grid ColumnDefinitions="Auto,Auto,Auto,*" Margin="0,1,0,0">
+                                                <TextBlock Text="{Binding LineNumber}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource AppTextMuted}"
+                                                           Margin="0,0,4,0" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding SnippetBefore}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource AppTextMuted}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="80" />
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding SnippetMatch}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource AppText}"
+                                                           Background="{DynamicResource MatchBackground}"
+                                                           TextWrapping="NoWrap" />
+                                                <TextBlock Grid.Column="3"
+                                                           Text="{Binding SnippetAfter}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource AppTextMuted}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </Grid>
                                             <TextBlock Text="{Binding Detail}"
                                                        FontSize="11"
-                                                       Foreground="#6B7580"
+                                                       Foreground="{DynamicResource AppTextMuted}"
                                                        TextWrapping="NoWrap"
-                                                       TextTrimming="CharacterEllipsis" />
+                                                       TextTrimming="CharacterEllipsis"
+                                                       IsVisible="{Binding !HasSnippet}" />
                                         </StackPanel>
                                     </Button>
                                 </DataTemplate>
@@ -287,36 +469,34 @@
             </Border>
 
             <ScrollViewer x:Name="DocScroll"
-                          Grid.Column="1"
-                          Background="#FFFFFF"
+                          Grid.Column="2"
+                          Background="{DynamicResource AppBackground}"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto">
                 <Panel x:Name="DocHost" />
             </ScrollViewer>
 
             <Border x:Name="OutlinePanel"
-                    Grid.Column="2"
+                    Grid.Column="3"
                     Width="250"
-                    Background="#F8FAFC"
-                    BorderBrush="#E3E8EE"
+                    Background="{DynamicResource PanelAltBackground}"
+                    BorderBrush="{DynamicResource PanelBorder}"
                     BorderThickness="1,0,0,0"
                     Padding="6,10"
                     IsVisible="False">
-                <DockPanel LastChildFill="True">
+                <DockPanel x:Name="OutlineDock" LastChildFill="True" FlowDirection="RightToLeft">
                     <TextBlock DockPanel.Dock="Top"
-                               Text="فهرست مطالب"
-                               FlowDirection="RightToLeft"
+                               Text="{DynamicResource OutlineTitle}"
                                FontSize="12"
                                FontWeight="SemiBold"
-                               Foreground="#6B7580"
+                               Foreground="{DynamicResource AppTextMuted}"
                                Margin="8,0,8,8" />
                     <TextBlock x:Name="OutlineEmpty"
                                DockPanel.Dock="Top"
-                               Text="این سند تیتر ندارد."
-                               FlowDirection="RightToLeft"
+                               Text="{DynamicResource OutlineEmpty}"
                                TextWrapping="Wrap"
                                FontSize="12"
-                               Foreground="#98A2B3"
+                               Foreground="{DynamicResource AppTextSoft}"
                                Margin="8,0,8,0"
                                IsVisible="False" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -337,30 +517,29 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="4"
-                Background="#F6F8FA"
-                BorderBrush="#E3E8EE"
+        <Border x:Name="StatusBorder"
+                Grid.Row="4"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorder}"
                 BorderThickness="0,1,0,0"
                 Padding="12,7">
-            <DockPanel LastChildFill="True">
+            <DockPanel x:Name="StatusPanel" LastChildFill="True" FlowDirection="RightToLeft">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="10">
                     <TextBlock x:Name="ProgressText"
                                FontSize="12"
-                               Foreground="#6B7580"
+                               Foreground="{DynamicResource AppTextMuted}"
                                VerticalAlignment="Center"
-                               ToolTip.Tip="درصد خوانده‌شده از سند" />
+                               ToolTip.Tip="{DynamicResource ProgressTip}" />
                     <TextBlock x:Name="CountText"
-                               FlowDirection="RightToLeft"
                                FontSize="12"
-                               Foreground="#6B7580"
+                               Foreground="{DynamicResource AppTextMuted}"
                                VerticalAlignment="Center" />
                 </StackPanel>
                 <TextBlock x:Name="FileText"
-                           Text="فایلی باز نشده است"
-                           FlowDirection="RightToLeft"
-                           TextAlignment="Right"
+                           Text="{DynamicResource NoFile}"
+                           TextAlignment="Start"
                            FontSize="12"
-                           Foreground="#4B5563"
+                           Foreground="{DynamicResource AppTextMuted}"
                            TextTrimming="CharacterEllipsis"
                            VerticalAlignment="Center" />
             </DockPanel>

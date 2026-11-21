@@ -1,0 +1,117 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+    <!-- Toolbar -->
+    <sys:String x:Key="Open">Open file</sys:String>
+    <sys:String x:Key="Reload">Reload</sys:String>
+    <sys:String x:Key="Direction">Direction</sys:String>
+    <sys:String x:Key="DirectionAuto">Automatic</sys:String>
+    <sys:String x:Key="DirectionRtl">Right to left</sys:String>
+    <sys:String x:Key="DirectionLtr">Left to right</sys:String>
+    <sys:String x:Key="Font">Font</sys:String>
+    <sys:String x:Key="Size">Size</sys:String>
+    <sys:String x:Key="ZoomInTip">Larger font (Ctrl + mouse wheel up)</sys:String>
+    <sys:String x:Key="ZoomOutTip">Smaller font (Ctrl + mouse wheel down)</sys:String>
+    <sys:String x:Key="Search">Search</sys:String>
+    <sys:String x:Key="SearchTip">Search this document (Ctrl + F)</sys:String>
+    <sys:String x:Key="Outline">Contents</sys:String>
+    <sys:String x:Key="OutlineTip">Show or hide the table of contents</sys:String>
+    <sys:String x:Key="Library">Library</sys:String>
+    <sys:String x:Key="LibraryTip">Show your notes folder and search through it</sys:String>
+    <sys:String x:Key="AutoReload">Auto reload</sys:String>
+    <sys:String x:Key="AutoReloadTip">Re-read the document when the file changes on disk</sys:String>
+    <sys:String x:Key="Marks">Bookmarks</sys:String>
+    <sys:String x:Key="MarksTip">Bookmarks, notes and where you stopped reading</sys:String>
+    <sys:String x:Key="Theme">Theme</sys:String>
+    <sys:String x:Key="ThemeLight">Light</sys:String>
+    <sys:String x:Key="ThemeDark">Dark</sys:String>
+    <sys:String x:Key="ThemeSystem">System</sys:String>
+    <sys:String x:Key="Language">Language</sys:String>
+    <sys:String x:Key="Width">Text width</sys:String>
+    <sys:String x:Key="WidthNarrow">Narrow</sys:String>
+    <sys:String x:Key="WidthNormal">Normal</sys:String>
+    <sys:String x:Key="WidthWide">Wide</sys:String>
+    <sys:String x:Key="Focus">Focus</sys:String>
+    <sys:String x:Key="FocusTip">Focus mode: hide the toolbars (F11)</sys:String>
+    <sys:String x:Key="Export">Export</sys:String>
+    <sys:String x:Key="ExportTip">Copy as rich text or save as PDF</sys:String>
+    <sys:String x:Key="CopyRichText">Copy as rich text</sys:String>
+    <sys:String x:Key="SavePdf">Save as PDF…</sys:String>
+
+    <!-- Tabs and search bar -->
+    <sys:String x:Key="CloseTab">Close this tab</sys:String>
+    <sys:String x:Key="SearchPlaceholder">Type the text to find…</sys:String>
+    <sys:String x:Key="SearchHint">Enter = next match, Shift + Enter = previous match, Escape = close</sys:String>
+    <sys:String x:Key="Previous">Previous</sys:String>
+    <sys:String x:Key="Next">Next</sys:String>
+    <sys:String x:Key="NoResults">No matches</sys:String>
+
+    <!-- Outline -->
+    <sys:String x:Key="OutlineTitle">Table of contents</sys:String>
+    <sys:String x:Key="OutlineEmpty">This document has no headings.</sys:String>
+    <sys:String x:Key="Section">Section {0}</sys:String>
+
+    <!-- Library -->
+    <sys:String x:Key="LibraryTitle">Library</sys:String>
+    <sys:String x:Key="ChooseFolder">Choose folder…</sys:String>
+    <sys:String x:Key="NoFolder">No folder selected.</sys:String>
+    <sys:String x:Key="LibraryPlaceholder">Search file names and contents…</sys:String>
+    <sys:String x:Key="FolderUnsupported">This system cannot pick folders.</sys:String>
+    <sys:String x:Key="FolderReadError">The folder could not be read: {0}</sys:String>
+    <sys:String x:Key="SearchFailed">The search failed: {0}</sys:String>
+    <sys:String x:Key="FileCount">{0} files</sys:String>
+    <sys:String x:Key="ResultCount">{0} results</sys:String>
+    <sys:String x:Key="Indexing">Indexing… {0} files</sys:String>
+    <sys:String x:Key="LibraryAndroidHint">The chosen folder stays open until the app is closed.</sys:String>
+
+    <!-- Marks -->
+    <sys:String x:Key="MarksTitle">Bookmarks and notes</sys:String>
+    <sys:String x:Key="MarksEmpty">This document has no bookmarks yet.</sys:String>
+    <sys:String x:Key="AddBookmark">Add bookmark</sys:String>
+    <sys:String x:Key="AddNote">Add note</sys:String>
+    <sys:String x:Key="NotePlaceholder">A note for this spot…</sys:String>
+    <sys:String x:Key="BookmarkLabel">Bookmark {0}%</sys:String>
+    <sys:String x:Key="DeleteMark">Delete</sys:String>
+    <sys:String x:Key="ResumeTip">Reopening the file continues from this spot.</sys:String>
+
+    <!-- Status bar -->
+    <sys:String x:Key="NoFile">No file is open</sys:String>
+    <sys:String x:Key="ProgressTip">How much of the document you have read</sys:String>
+    <sys:String x:Key="WordsFormat">{0:N0} words · {1:N0} characters</sys:String>
+    <sys:String x:Key="MinutesFormat">{0} min read</sys:String>
+
+    <!-- Empty state -->
+    <sys:String x:Key="NoFileTitle">No file is open</sys:String>
+    <sys:String x:Key="NoFileHint">Open a Markdown file, or drag one onto this window to start.</sys:String>
+    <sys:String x:Key="EmptyFileTitle">This file is empty.</sys:String>
+    <sys:String x:Key="EmptyFileHint">The chosen file has no content.</sys:String>
+    <sys:String x:Key="Recent">Recently opened</sys:String>
+    <sys:String x:Key="ShortcutOpen">Open a file (new tab)</sys:String>
+    <sys:String x:Key="ShortcutClose">Close the current tab</sys:String>
+    <sys:String x:Key="ShortcutSearch">Search this document (Enter = next match)</sys:String>
+    <sys:String x:Key="ShortcutReload">Reload the current file</sys:String>
+    <sys:String x:Key="ShortcutPdf">Save as PDF</sys:String>
+    <sys:String x:Key="ShortcutCopy">Copy the text as rich text</sys:String>
+    <sys:String x:Key="ShortcutZoom">Grow or shrink the font</sys:String>
+    <sys:String x:Key="ShortcutReset">Reset the font size</sys:String>
+    <sys:String x:Key="ShortcutFocus">Focus mode</sys:String>
+
+    <!-- Messages -->
+    <sys:String x:Key="Copied">The text was copied as rich text.</sys:String>
+    <sys:String x:Key="CopyFailed">Could not copy: {0}</sys:String>
+    <sys:String x:Key="SaveUnsupported">This system cannot save files.</sys:String>
+    <sys:String x:Key="PdfTitle">Save as PDF</sys:String>
+    <sys:String x:Key="PdfSaved">The PDF was saved ({0} pages).</sys:String>
+    <sys:String x:Key="PdfFailed">The PDF could not be saved: {0}</sys:String>
+    <sys:String x:Key="OpenFailed">The file could not be opened: {0}</sys:String>
+    <sys:String x:Key="CodeCopy">Copy</sys:String>
+    <sys:String x:Key="CodeCopied">The code was copied.</sys:String>
+    <sys:String x:Key="MarkAdded">Bookmark added.</sys:String>
+    <sys:String x:Key="NoteAdded">Note added.</sys:String>
+    <sys:String x:Key="FilePickerTitle">Choose a Markdown file</sys:String>
+    <sys:String x:Key="MarkdownFiles">Markdown files</sys:String>
+    <sys:String x:Key="TextFiles">Text files</sys:String>
+    <sys:String x:Key="FolderPickerTitle">Choose the notes folder</sys:String>
+
+</ResourceDictionary>

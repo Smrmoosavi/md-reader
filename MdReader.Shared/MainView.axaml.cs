@@ -45,6 +45,9 @@ public sealed class DocumentTab
 
     public string? EmptyTitle { get; set; }
 
+    /// <summary>Whether the saved reading position of this file was already applied in this session.</summary>
+    public bool PositionRestored { get; set; }
+
     public string ToolTip => Path ?? Header;
 }
 
@@ -64,6 +67,22 @@ public sealed class FontChoice
     public FontFamily Family { get; }
 
     public string Name { get; }
+}
+
+/// <summary>One row of a toolbar picker: a stored value and its localized label.</summary>
+public sealed class UiChoice
+{
+    public UiChoice(string value, string label)
+    {
+        Value = value;
+        Label = label;
+    }
+
+    public string Value { get; }
+
+    public string Label { get; }
+
+    public override string ToString() => Label;
 }
 
 public partial class MainView : UserControl
@@ -88,6 +107,8 @@ public partial class MainView : UserControl
     private readonly MarkdownRenderOptions _options = new();
     private readonly ObservableCollection<DocumentTab> _tabs = new();
     private readonly ObservableCollection<LibraryItem> _libraryItems = new();
+    private readonly ObservableCollection<DocumentMark> _marks = new();
+    private readonly LibraryIndex _library = new();
     private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly AppSettings _settings = AppSettings.Load();
 
@@ -96,42 +117,46 @@ public partial class MainView : UserControl
     private bool _suppressTabEvents;
     private bool _suppressSearch;
     private bool _updatingPosition;
+    private bool _focusMode;
 
     private string _searchQuery = string.Empty;
     private int _matchIndex;
 
-    private string? _libraryRoot;
-    private List<string> _libraryFiles = new();
     private DispatcherTimer? _libraryTimer;
     private DispatcherTimer? _reloadTimer;
+    private DispatcherTimer? _stateTimer;
     private string _pendingReloadPath = string.Empty;
 
     public MainView()
     {
+        // The language has to be settled before the markup resolves its DynamicResource strings.
+        Lang.Apply(_settings.Language);
+        AppTheme.Apply(_settings.Theme);
         InitializeComponent();
 
         DocTabs.ItemsSource = _tabs;
         LibraryList.ItemsSource = _libraryItems;
+        MarksList.ItemsSource = _marks;
 
         _options.NavigateToAnchor = NavigateToAnchor;
         _options.BaseFontSize = FontSizes.Contains(_settings.BaseFontSize) ? _settings.BaseFontSize : 16;
-        _options.Rtl = _settings.Rtl;
-        _options.DocumentDirectory = null;
+        _options.MaxContentWidth = WidthFor(_settings.Width);
+        _options.Palette = MarkdownPalette.For(AppTheme.IsDark);
 
         LoadFontFamilies();
         LoadFontSizes();
+        LoadChoices();
 
         _suppressEvents = true;
-        RtlCheckBox.IsChecked = _settings.Rtl;
         TocToggle.IsChecked = _settings.OutlineVisible;
         AutoReloadCheck.IsChecked = _settings.AutoReload;
         _suppressEvents = false;
         OutlinePanel.IsVisible = _settings.OutlineVisible;
 
-        // The library panel lists folders on disk; Android picks documents one at a time.
-        LibraryToggle.IsVisible = !IsMobile;
         LibraryPanel.IsVisible = false;
+        MarksPanel.IsVisible = false;
 
+        ApplyUiDirection();
         ShowEmptyState();
 
         DragDrop.SetAllowDrop(this, true);
@@ -139,8 +164,15 @@ public partial class MainView : UserControl
         AddHandler(DragDrop.DropEvent, View_Drop);
         AddHandler(PointerWheelChangedEvent, View_PointerWheelChanged, RoutingStrategies.Tunnel);
 
-        DocScroll.ScrollChanged += (_, _) => UpdateReadingPosition();
+        DocScroll.ScrollChanged += (_, _) =>
+        {
+            UpdateReadingPosition();
+            ScheduleStateSave();
+        };
+
         ExternalOpen.PendingChanged += OnExternalOpen;
+        Lang.Changed += (_, _) => ApplyLanguage();
+        Application.Current!.ActualThemeVariantChanged += (_, _) => OnThemeVariantChanged();
 
         RestoreLibrary();
         ConsumeExternalOpen();
@@ -170,10 +202,9 @@ public partial class MainView : UserControl
     {
         if (args.Any(a => a.Equals("--rtl", StringComparison.OrdinalIgnoreCase)))
         {
-            _suppressEvents = true;
-            RtlCheckBox.IsChecked = true;
-            _suppressEvents = false;
-            _options.Rtl = true;
+            _settings.Direction = "rtl";
+            SaveSettings();
+            SelectChoice(DirectionCombo, "rtl");
         }
 
         if (args.Any(a => a.Equals("--watch", StringComparison.OrdinalIgnoreCase)))
@@ -211,17 +242,17 @@ public partial class MainView : UserControl
 
         var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "انتخاب فایل Markdown",
+            Title = Lang.T("FilePickerTitle"),
             AllowMultiple = true,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("فایل‌های Markdown")
+                new FilePickerFileType(Lang.T("MarkdownFiles"))
                 {
                     Patterns = new[] { "*.md", "*.markdown", "*.mdown", "*.mkd" },
                     AppleUniformTypeIdentifiers = new[] { "net.daringfireball.markdown", "public.plain-text" },
                     MimeTypes = new[] { "text/markdown", "text/x-markdown", "text/plain" },
                 },
-                new FilePickerFileType("فایل متنی")
+                new FilePickerFileType(Lang.T("TextFiles"))
                 {
                     Patterns = new[] { "*.txt" },
                     MimeTypes = new[] { "text/plain" },
@@ -263,15 +294,14 @@ public partial class MainView : UserControl
         e.Handled = true;
     }
 
-    private void RtlCheckBox_Changed(object? sender, RoutedEventArgs e)
+    private void DirectionCombo_Changed(object? sender, SelectionChangedEventArgs e)
     {
-        if (_suppressEvents)
+        if (_suppressEvents || DirectionCombo.SelectedItem is not UiChoice choice)
         {
             return;
         }
 
-        _options.Rtl = RtlCheckBox.IsChecked == true;
-        _settings.Rtl = _options.Rtl;
+        _settings.Direction = choice.Value;
         SaveSettings();
         Refresh(preserveScroll: true);
     }
@@ -324,6 +354,57 @@ public partial class MainView : UserControl
         UpdateReadingPosition();
     }
 
+    private void MarksToggle_Changed(object? sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        MarksPanel.IsVisible = MarksToggle.IsChecked == true;
+        RebuildMarks();
+    }
+
+    private void WidthCombo_Changed(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressEvents || WidthCombo.SelectedItem is not UiChoice choice)
+        {
+            return;
+        }
+
+        _settings.Width = choice.Value;
+        _options.MaxContentWidth = WidthFor(choice.Value);
+        SaveSettings();
+        Refresh(preserveScroll: true);
+    }
+
+    private void ThemeCombo_Changed(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressEvents || ThemeCombo.SelectedItem is not UiChoice choice)
+        {
+            return;
+        }
+
+        _settings.Theme = choice.Value;
+        SaveSettings();
+        AppTheme.Apply(choice.Value);
+        ApplyPalette();
+    }
+
+    private void LanguageCombo_Changed(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressEvents || LanguageCombo.SelectedItem is not UiChoice choice)
+        {
+            return;
+        }
+
+        _settings.Language = choice.Value;
+        SaveSettings();
+        Lang.Apply(choice.Value);
+    }
+
+    private void FocusToggle_Click(object? sender, RoutedEventArgs e) => ApplyFocusMode(FocusToggle.IsChecked == true);
+
     private void OutlineItem_Click(object? sender, RoutedEventArgs e)
     {
         if ((sender as Control)?.DataContext is OutlineEntry entry)
@@ -375,6 +456,16 @@ public partial class MainView : UserControl
         else if (ctrl && e.Key == Key.C && (e.KeyModifiers & KeyModifiers.Shift) != 0 && _current != null)
         {
             CopyRichText_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.D && _current != null)
+        {
+            AddBookmark_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F11)
+        {
+            ApplyFocusMode(!_focusMode);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SearchBar.IsVisible)
@@ -439,6 +530,135 @@ public partial class MainView : UserControl
         }
     }
 
+    // ---------- marks ----------
+
+    private DocumentState CurrentState =>
+        ReadingStateStore.Get(_current?.Path);
+
+    private void AddBookmark_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_current == null)
+        {
+            return;
+        }
+
+        var offset = DocScroll.Offset.Y;
+        var label = ActiveHeadingTitle() ?? Lang.F("BookmarkLabel", ReadPercent());
+
+        CurrentState.Marks.Add(new DocumentMark("bookmark", offset, label));
+        SaveCurrentState();
+        RebuildMarks();
+        FileText.Text = Lang.T("MarkAdded");
+    }
+
+    private void AddNote_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_current == null)
+        {
+            return;
+        }
+
+        var text = (NoteBox.Text ?? string.Empty).Trim();
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        CurrentState.Marks.Add(new DocumentMark("note", DocScroll.Offset.Y, text));
+        SaveCurrentState();
+        NoteBox.Text = string.Empty;
+        RebuildMarks();
+        FileText.Text = Lang.T("NoteAdded");
+    }
+
+    private void MarkItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not DocumentMark mark)
+        {
+            return;
+        }
+
+        RestoreScroll(mark.Offset);
+        e.Handled = true;
+    }
+
+    private void MarkDelete_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not DocumentMark mark)
+        {
+            return;
+        }
+
+        CurrentState.Marks.Remove(mark);
+        SaveCurrentState();
+        RebuildMarks();
+        e.Handled = true;
+    }
+
+    private void RebuildMarks()
+    {
+        _marks.Clear();
+
+        if (_current != null)
+        {
+            foreach (var mark in CurrentState.Marks.OrderBy(m => m.Offset))
+            {
+                _marks.Add(mark);
+            }
+        }
+
+        MarksEmptyText.IsVisible = _marks.Count == 0;
+        MarksList.IsVisible = _marks.Count > 0;
+    }
+
+    private string? ActiveHeadingTitle() =>
+        _current?.Rendered?.Outline.FirstOrDefault(entry => entry.IsActive)?.Title;
+
+    private int ReadPercent()
+    {
+        var extent = DocScroll.Extent.Height;
+        var viewport = DocScroll.Viewport.Height;
+
+        if (extent <= viewport + 1 || viewport <= 0)
+        {
+            return 100;
+        }
+
+        var maximum = Math.Max(1, extent - viewport);
+        return (int)Math.Round(Math.Clamp(DocScroll.Offset.Y / maximum, 0, 1) * 100);
+    }
+
+    /// <summary>Saves the scroll position shortly after scrolling stops, so a crash or a closed
+    /// window still leaves the reader where they were.</summary>
+    private void ScheduleStateSave()
+    {
+        if (_current == null)
+        {
+            return;
+        }
+
+        _stateTimer?.Stop();
+        _stateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        _stateTimer.Tick += (_, _) =>
+        {
+            _stateTimer?.Stop();
+            SaveCurrentState();
+        };
+        _stateTimer.Start();
+    }
+
+    private void SaveCurrentState()
+    {
+        if (_current is not { Path: { Length: > 0 } path })
+        {
+            return;
+        }
+
+        var state = ReadingStateStore.Get(path);
+        state.Position = DocScroll.Offset.Y;
+        ReadingStateStore.Save(path, state);
+    }
+
     // ---------- library ----------
 
     private async void ChooseLibraryFolder_Click(object? sender, RoutedEventArgs e)
@@ -446,31 +666,56 @@ public partial class MainView : UserControl
         var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
         if (storage == null || !storage.CanPickFolder)
         {
-            LibraryStatusText.Text = "این سیستم انتخاب پوشه را پشتیبانی نمی‌کند.";
+            LibraryStatusText.Text = Lang.T("FolderUnsupported");
             return;
         }
 
         var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "انتخاب پوشه‌ی یادداشت‌ها",
+            Title = Lang.T("FolderPickerTitle"),
             AllowMultiple = false,
         });
 
-        var path = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (string.IsNullOrEmpty(path))
+        var folder = folders.FirstOrDefault();
+        if (folder == null)
         {
             return;
         }
 
-        _settings.LibraryPath = path;
-        SaveSettings();
-
-        LoadLibrary(path);
         LibraryPanel.IsVisible = true;
-
         _suppressEvents = true;
         LibraryToggle.IsChecked = true;
         _suppressEvents = false;
+
+        var path = folder.TryGetLocalPath();
+
+        if (!string.IsNullOrEmpty(path))
+        {
+            _settings.LibraryPath = path;
+            SaveSettings();
+            LoadLibrary(path);
+            return;
+        }
+
+        // A folder without a filesystem path (Android's storage access framework) is read through
+        // the storage API; it cannot be remembered after the app closes, so no path is saved.
+        _settings.LibraryPath = null;
+        SaveSettings();
+        LibraryPathText.Text = folder.Name;
+        LibraryStatusText.Text = Lang.T("Indexing").Replace("{0}", "…", StringComparison.Ordinal);
+
+        try
+        {
+            await _library.LoadFolderAsync(folder, count =>
+                Dispatcher.UIThread.Post(() =>
+                    LibraryStatusText.Text = Lang.F("Indexing", count)));
+            RefreshLibraryList();
+            LibraryStatusText.Text = Lang.T("LibraryAndroidHint");
+        }
+        catch (Exception ex)
+        {
+            LibraryStatusText.Text = Lang.F("FolderReadError", ex.Message);
+        }
     }
 
     private void LibraryToggle_Changed(object? sender, RoutedEventArgs e)
@@ -482,7 +727,7 @@ public partial class MainView : UserControl
 
         LibraryPanel.IsVisible = LibraryToggle.IsChecked == true;
 
-        if (LibraryPanel.IsVisible && _libraryRoot == null && !string.IsNullOrEmpty(_settings.LibraryPath))
+        if (LibraryPanel.IsVisible && _library.Count == 0 && !string.IsNullOrEmpty(_settings.LibraryPath))
         {
             LoadLibrary(_settings.LibraryPath!);
         }
@@ -490,7 +735,7 @@ public partial class MainView : UserControl
 
     private void RestoreLibrary()
     {
-        if (!IsMobile && !string.IsNullOrEmpty(_settings.LibraryPath) && Directory.Exists(_settings.LibraryPath))
+        if (!string.IsNullOrEmpty(_settings.LibraryPath) && Directory.Exists(_settings.LibraryPath))
         {
             LoadLibrary(_settings.LibraryPath!);
         }
@@ -500,21 +745,20 @@ public partial class MainView : UserControl
     {
         try
         {
-            _libraryRoot = root;
-            _libraryFiles = LibraryScanner.Files(root);
+            _library.LoadPath(root);
             LibraryPathText.Text = root;
-            LibraryPathText.Foreground = new SolidColorBrush(Color.Parse("#4B5563"));
+            LibraryPathText.Foreground = ResourceBrush("AppTextMuted");
             RefreshLibraryList();
         }
         catch (Exception ex)
         {
-            LibraryStatusText.Text = "پوشه خوانده نشد: " + ex.Message;
+            LibraryStatusText.Text = Lang.F("FolderReadError", ex.Message);
         }
     }
 
     private void LibrarySearchBox_TextChanged(object? sender, TextChangedEventArgs e)
     {
-        if (_libraryRoot == null)
+        if (_library.Count == 0)
         {
             return;
         }
@@ -534,9 +778,9 @@ public partial class MainView : UserControl
     {
         _libraryItems.Clear();
 
-        if (_libraryRoot == null)
+        if (_library.Count == 0)
         {
-            LibraryStatusText.Text = "پوشه‌ای انتخاب نشده است.";
+            LibraryStatusText.Text = Lang.T("NoFolder");
             return;
         }
 
@@ -544,18 +788,24 @@ public partial class MainView : UserControl
 
         try
         {
-            foreach (var item in LibraryScanner.Search(_libraryFiles, _libraryRoot, query))
+            // Only files that changed on disk are read again, so typing stays fast.
+            if (query.Trim().Length > 0)
+            {
+                _library.RefreshChanged();
+            }
+
+            foreach (var item in _library.Search(query))
             {
                 _libraryItems.Add(item);
             }
 
             LibraryStatusText.Text = query.Trim().Length == 0
-                ? $"{_libraryFiles.Count.ToString(CultureInfo.CurrentCulture)} فایل"
-                : $"{_libraryItems.Count.ToString(CultureInfo.CurrentCulture)} نتیجه";
+                ? Lang.F("FileCount", _library.Count)
+                : Lang.F("ResultCount", _libraryItems.Count);
         }
         catch (Exception ex)
         {
-            LibraryStatusText.Text = "جست‌وجو انجام نشد: " + ex.Message;
+            LibraryStatusText.Text = Lang.F("SearchFailed", ex.Message);
         }
     }
 
@@ -567,7 +817,15 @@ public partial class MainView : UserControl
         }
 
         e.Handled = true;
-        await OpenPathAsync(item.FullPath);
+
+        if (item.Path is { Length: > 0 } path)
+        {
+            await OpenPathAsync(path);
+        }
+        else if (item.File is { } file)
+        {
+            await OpenFileAsync(file);
+        }
 
         if (_current == null || item.Query is not { Length: > 0 } query)
         {
@@ -622,11 +880,11 @@ public partial class MainView : UserControl
             var data = new DataTransfer();
             data.Add(item);
             await clipboard.SetDataAsync(data);
-            FileText.Text = "متن به‌صورت غنی کپی شد.";
+            FileText.Text = Lang.T("Copied");
         }
         catch (Exception ex)
         {
-            FileText.Text = "کپی نشد: " + ex.Message;
+            ShowStatusError(Lang.F("CopyFailed", ex.Message));
         }
     }
 
@@ -640,7 +898,7 @@ public partial class MainView : UserControl
         var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
         if (storage is not { CanSave: true })
         {
-            FileText.Text = "ذخیره‌ی فایل در این سیستم پشتیبانی نمی‌شود.";
+            FileText.Text = Lang.T("SaveUnsupported");
             return;
         }
 
@@ -652,7 +910,7 @@ public partial class MainView : UserControl
 
         var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "ذخیره به PDF",
+            Title = Lang.T("PdfTitle"),
             SuggestedFileName = name + ".pdf",
             DefaultExtension = "pdf",
             FileTypeChoices = new[]
@@ -674,11 +932,11 @@ public partial class MainView : UserControl
         {
             await using var stream = await file.OpenWriteAsync();
             var pages = PdfExporter.Export(_current.Markdown, _options, stream);
-            FileText.Text = $"PDF ذخیره شد ({pages.ToString(CultureInfo.CurrentCulture)} صفحه).";
+            FileText.Text = Lang.F("PdfSaved", pages);
         }
         catch (Exception ex)
         {
-            FileText.Text = "PDF ذخیره نشد: " + ex.Message;
+            ShowStatusError(Lang.F("PdfFailed", ex.Message));
         }
     }
 
@@ -912,7 +1170,7 @@ public partial class MainView : UserControl
 
         if (count == 0)
         {
-            SearchCountText.Text = "نتیجه‌ای نیست";
+            SearchCountText.Text = Lang.T("NoResults");
             return;
         }
 
@@ -1007,6 +1265,19 @@ public partial class MainView : UserControl
         Refresh(preserveScroll: false);
         UpdateStatus();
         UpdateWatchers();
+        RebuildMarks();
+
+        // A file is reopened where the reader stopped, but only the first time in a session so a
+        // deliberate jump is not undone by switching tabs.
+        if (!tab.PositionRestored)
+        {
+            tab.PositionRestored = true;
+
+            if (ReadingStateStore.HasPosition(ReadingStateStore.Get(tab.Path)))
+            {
+                RestoreScroll(ReadingStateStore.Get(tab.Path).Position);
+            }
+        }
     }
 
     private void CloseTab(DocumentTab tab)
@@ -1019,6 +1290,7 @@ public partial class MainView : UserControl
 
         if (ReferenceEquals(_current, tab))
         {
+            SaveCurrentState();
             _current = null;
         }
 
@@ -1035,6 +1307,7 @@ public partial class MainView : UserControl
             UpdateStatus();
             UpdateSession();
             UpdateWatchers();
+            RebuildMarks();
             DocumentTitleChanged?.Invoke(this, $"MD Reader {AppVersion}");
             return;
         }
@@ -1178,10 +1451,15 @@ public partial class MainView : UserControl
 
     private void ShowOpenError(Exception ex)
     {
-        FileText.Text = $"فایل باز نشد: {ex.Message}";
-        FileText.Foreground = new SolidColorBrush(Color.Parse("#B42318"));
+        ShowStatusError(Lang.F("OpenFailed", ex.Message));
         CountText.Text = string.Empty;
         ProgressText.Text = string.Empty;
+    }
+
+    private void ShowStatusError(string message)
+    {
+        FileText.Text = message;
+        FileText.Foreground = ResourceBrush("AppDanger");
     }
 
     private void Refresh(bool preserveScroll = true)
@@ -1196,7 +1474,7 @@ public partial class MainView : UserControl
 
         if (_current.Markdown.Trim().Length == 0)
         {
-            _current.EmptyTitle = "این فایل خالی است.";
+            _current.EmptyTitle = Lang.T("EmptyFileTitle");
             _current.Rendered = null;
             ShowEmptyState();
             UpdateOutline();
@@ -1211,6 +1489,9 @@ public partial class MainView : UserControl
         _options.DocumentDirectory = _current.Path is { Length: > 0 } path
             ? System.IO.Path.GetDirectoryName(path)
             : null;
+
+        _options.Rtl = EffectiveRtl(_current.Markdown);
+        _options.Palette = MarkdownPalette.For(AppTheme.IsDark);
 
         var viewportWidth = DocScroll.Viewport.Width;
         _options.MaxImageWidth = viewportWidth > 240 ? Math.Min(760, viewportWidth - 80) : 560;
@@ -1233,6 +1514,15 @@ public partial class MainView : UserControl
         // Layout has to settle before headings know where they are on screen.
         Dispatcher.UIThread.Post(UpdateReadingPosition, DispatcherPriority.Loaded);
     }
+
+    /// <summary>Whether this document is drawn right to left: the preference may be a fixed
+    /// direction or follow the script of the document itself.</summary>
+    private bool EffectiveRtl(string markdown) => _settings.Direction switch
+    {
+        "rtl" => true,
+        "ltr" => false,
+        _ => TextDirection.IsRtl(markdown) || (markdown.Trim().Length == 0 && Lang.IsRtl),
+    };
 
     private void UpdateOutline()
     {
@@ -1294,18 +1584,7 @@ public partial class MainView : UserControl
             return;
         }
 
-        var extent = DocScroll.Extent.Height;
-        var viewport = DocScroll.Viewport.Height;
-
-        if (extent <= viewport + 1 || viewport <= 0)
-        {
-            ProgressText.Text = "۱۰۰٪";
-            return;
-        }
-
-        var maximum = Math.Max(1, extent - viewport);
-        var percent = (int)Math.Round(Math.Clamp(DocScroll.Offset.Y / maximum, 0, 1) * 100);
-        ProgressText.Text = $"{percent.ToString(CultureInfo.CurrentCulture)}٪";
+        ProgressText.Text = $"{ReadPercent().ToString(CultureInfo.CurrentCulture)}٪";
     }
 
     private void ApplyFontSize(double size)
@@ -1365,8 +1644,15 @@ public partial class MainView : UserControl
         DocHost.Children.Clear();
         ProgressText.Text = string.Empty;
 
-        var direction = _options.Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-        var align = _options.Rtl ? TextAlignment.Right : TextAlignment.Left;
+        var rtl = _settings.Direction switch
+        {
+            "rtl" => true,
+            "ltr" => false,
+            _ => Lang.IsRtl,
+        };
+
+        var direction = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+        var align = rtl ? TextAlignment.Right : TextAlignment.Left;
         var emptyTitle = _current?.EmptyTitle;
         var panel = new StackPanel
         {
@@ -1376,21 +1662,19 @@ public partial class MainView : UserControl
 
         panel.Children.Add(new TextBlock
         {
-            Text = emptyTitle ?? "فایلی باز نشده است",
+            Text = emptyTitle ?? Lang.T("NoFileTitle"),
             FontSize = _options.BaseFontSize * 1.5,
             FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Color.Parse("#24292F")),
+            Foreground = ResourceBrush("AppText"),
             TextAlignment = align,
             Margin = new Thickness(0, 0, 0, 10),
         });
 
         panel.Children.Add(new TextBlock
         {
-            Text = emptyTitle == null
-                ? "برای شروع، یک فایل Markdown را باز کنید یا آن را روی همین پنجره بکشید."
-                : "فایل انتخاب‌شده هیچ محتوایی ندارد.",
+            Text = emptyTitle == null ? Lang.T("NoFileHint") : Lang.T("EmptyFileHint"),
             FontSize = _options.BaseFontSize,
-            Foreground = new SolidColorBrush(Color.Parse("#6B7580")),
+            Foreground = ResourceBrush("AppTextMuted"),
             TextAlignment = align,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 18),
@@ -1398,20 +1682,22 @@ public partial class MainView : UserControl
 
         foreach (var (keys, description) in new (string, string)[]
                  {
-                     ("Ctrl + O", "باز کردن فایل (تب جدید)"),
-                     ("Ctrl + W", "بستن تب فعلی"),
-                     ("Ctrl + F", "جست‌وجو در سند (Enter = نتیجه بعدی)"),
-                     ("F5", "بازخوانی فایل فعلی"),
-                     ("Ctrl + P", "ذخیره به PDF"),
-                     ("Ctrl + Shift + C", "کپی متن به‌صورت غنی"),
-                     ("Ctrl + + / Ctrl + −", "بزرگ و کوچک کردن فونت"),
-                     ("Ctrl + 0", "بازگشت فونت به اندازه پیش‌فرض"),
+                     ("Ctrl + O", Lang.T("ShortcutOpen")),
+                     ("Ctrl + W", Lang.T("ShortcutClose")),
+                     ("Ctrl + F", Lang.T("ShortcutSearch")),
+                     ("Ctrl + D", Lang.T("AddBookmark")),
+                     ("F11", Lang.T("ShortcutFocus")),
+                     ("F5", Lang.T("ShortcutReload")),
+                     ("Ctrl + P", Lang.T("ShortcutPdf")),
+                     ("Ctrl + Shift + C", Lang.T("ShortcutCopy")),
+                     ("Ctrl + + / Ctrl + −", Lang.T("ShortcutZoom")),
+                     ("Ctrl + 0", Lang.T("ShortcutReset")),
                  })
         {
             var row = new TextBlock
             {
                 FontSize = _options.BaseFontSize * 0.85,
-                Foreground = new SolidColorBrush(Color.Parse("#6B7580")),
+                Foreground = ResourceBrush("AppTextMuted"),
                 TextAlignment = align,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 4),
@@ -1439,6 +1725,12 @@ public partial class MainView : UserControl
 
         var existing = recent.Where(System.IO.File.Exists).ToList();
 
+        // Files that disappeared are dropped from the list the next time it is shown.
+        foreach (var missing in recent.Except(existing).ToList())
+        {
+            _settings.RemoveRecent(missing);
+        }
+
         if (existing.Count == 0)
         {
             return;
@@ -1446,10 +1738,10 @@ public partial class MainView : UserControl
 
         panel.Children.Add(new TextBlock
         {
-            Text = "اخیراً باز شده",
+            Text = Lang.T("Recent"),
             FontSize = _options.BaseFontSize * 0.95,
             FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Color.Parse("#24292F")),
+            Foreground = ResourceBrush("AppText"),
             TextAlignment = align,
             Margin = new Thickness(0, 16, 0, 6),
         });
@@ -1465,7 +1757,7 @@ public partial class MainView : UserControl
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 FontSize = _options.BaseFontSize * 0.9,
-                Foreground = new SolidColorBrush(Color.Parse("#0B62C4")),
+                Foreground = ResourceBrush("AppLink"),
                 Cursor = new Cursor(StandardCursorType.Hand),
             };
 
@@ -1474,13 +1766,151 @@ public partial class MainView : UserControl
             button.Click += async (_, _) => await OpenPathAsync(target);
             panel.Children.Add(button);
         }
+    }
 
-        // Files that disappeared are dropped from the list the next time it is shown.
-        foreach (var missing in recent.Except(existing).ToList())
+    // ---------- pickers and appearance ----------
+
+    private void LoadChoices()
+    {
+        _suppressEvents = true;
+
+        FillChoices(DirectionCombo, new[]
         {
-            _settings.RemoveRecent(missing);
+            new UiChoice("auto", Lang.T("DirectionAuto")),
+            new UiChoice("rtl", Lang.T("DirectionRtl")),
+            new UiChoice("ltr", Lang.T("DirectionLtr")),
+        }, _settings.Direction);
+
+        FillChoices(WidthCombo, new[]
+        {
+            new UiChoice("narrow", Lang.T("WidthNarrow")),
+            new UiChoice("normal", Lang.T("WidthNormal")),
+            new UiChoice("wide", Lang.T("WidthWide")),
+        }, _settings.Width);
+
+        FillChoices(ThemeCombo, new[]
+        {
+            new UiChoice(AppTheme.System, Lang.T("ThemeSystem")),
+            new UiChoice(AppTheme.Light, Lang.T("ThemeLight")),
+            new UiChoice(AppTheme.Dark, Lang.T("ThemeDark")),
+        }, AppTheme.Normalize(_settings.Theme));
+
+        FillChoices(LanguageCombo,
+            Lang.Supported.Select(code => new UiChoice(code, Lang.DisplayName(code))).ToArray(),
+            _settings.Language);
+
+        _suppressEvents = false;
+    }
+
+    private static void FillChoices(ComboBox combo, IReadOnlyList<UiChoice> choices, string selected)
+    {
+        combo.ItemsSource = choices;
+        combo.SelectedItem = choices.FirstOrDefault(c => c.Value.Equals(selected, StringComparison.OrdinalIgnoreCase))
+                             ?? choices.FirstOrDefault();
+    }
+
+    private void SelectChoice(ComboBox combo, string value)
+    {
+        if (combo.ItemsSource is IEnumerable<UiChoice> choices)
+        {
+            _suppressEvents = true;
+            combo.SelectedItem = choices.FirstOrDefault(c => c.Value == value) ?? combo.SelectedItem;
+            _suppressEvents = false;
         }
     }
+
+    private static double WidthFor(string? width) => width switch
+    {
+        "narrow" => 660,
+        "wide" => 0,
+        _ => 880,
+    };
+
+    /// <summary>Mirrors the toolbar and the panels for the interface language.</summary>
+    private void ApplyUiDirection()
+    {
+        var direction = Lang.IsRtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+
+        foreach (var control in new Control[]
+                 {
+                     ToolbarPanel, DocTabs, SearchBarGrid, MarksDock, LibraryDock, OutlineDock,
+                     StatusPanel, OutlineList,
+                 })
+        {
+            control.FlowDirection = direction;
+        }
+    }
+
+    /// <summary>Re-renders the document with the palette that matches the current theme.</summary>
+    private void ApplyPalette()
+    {
+        _options.Palette = MarkdownPalette.For(AppTheme.IsDark);
+
+        if (TopLevel.GetTopLevel(this) is Window window)
+        {
+            window.Background = App.WindowBackground();
+        }
+
+        if (_current != null)
+        {
+            Refresh(preserveScroll: true);
+        }
+        else
+        {
+            ShowEmptyState();
+        }
+    }
+
+    private void OnThemeVariantChanged() =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (AppTheme.Normalize(_settings.Theme) == AppTheme.System)
+            {
+                ApplyPalette();
+            }
+        });
+
+    private void ApplyLanguage()
+    {
+        ApplyUiDirection();
+        LoadChoices();
+
+        // Strings inside the toolbar are DynamicResources and follow automatically; the document
+        // and the status bar are built in code, so they are rebuilt.
+        FileText.Text = _current?.Path ?? Lang.T("NoFile");
+        RebuildMarks();
+        UpdateSearchStatus();
+        UpdateStatus();
+
+        if (_current != null)
+        {
+            Refresh(preserveScroll: true);
+        }
+        else
+        {
+            ShowEmptyState();
+        }
+    }
+
+    private void ApplyFocusMode(bool focus)
+    {
+        _focusMode = focus;
+
+        _suppressEvents = true;
+        FocusToggle.IsChecked = focus;
+        _suppressEvents = false;
+
+        ToolbarBorder.IsVisible = !focus;
+        StatusBorder.IsVisible = !focus;
+
+        if (!IsMobile && TopLevel.GetTopLevel(this) is Window window)
+        {
+            window.WindowState = focus ? WindowState.FullScreen : WindowState.Normal;
+        }
+    }
+
+    private IBrush ResourceBrush(string key) =>
+        this.TryFindResource(key, out var value) && value is IBrush brush ? brush : Brushes.Gray;
 
     private void LoadFontFamilies()
     {
@@ -1531,17 +1961,16 @@ public partial class MainView : UserControl
 
     private void SaveSettings()
     {
-        _settings.Rtl = _options.Rtl;
         _settings.Save();
     }
 
     private void UpdateStatus()
     {
-        FileText.Foreground = new SolidColorBrush(Color.Parse("#4B5563"));
+        FileText.Foreground = ResourceBrush("AppTextMuted");
 
         if (_current == null)
         {
-            FileText.Text = "فایلی باز نشده است";
+            FileText.Text = Lang.T("NoFile");
             CountText.Text = string.Empty;
             ProgressText.Text = string.Empty;
             return;
@@ -1549,11 +1978,10 @@ public partial class MainView : UserControl
 
         FileText.Text = _current.Path ?? _current.Header;
         var words = Regex.Matches(_current.Markdown, @"[\p{L}\p{N}]+").Count;
-        CountText.Text = string.Format(
-            CultureInfo.CurrentCulture,
-            "{0:N0} کلمه · {1:N0} کاراکتر",
-            words,
-            _current.Markdown.Length);
+        var minutes = Math.Max(1, (int)Math.Round(words / 200.0));
+
+        CountText.Text = Lang.F("WordsFormat", words, _current.Markdown.Length) + " · " +
+                         Lang.F("MinutesFormat", minutes);
     }
 
     // ---------- scrolling helpers ----------

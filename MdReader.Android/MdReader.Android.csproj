@@ -13,7 +13,7 @@
     <ApplicationId>com.smrmoosavi.mdreader</ApplicationId>
     <!-- Version comes from Directory.Build.props; ApplicationVersion is the store build number. -->
     <ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion>
-    <ApplicationVersion>7</ApplicationVersion>
+    <ApplicationVersion>8</ApplicationVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
