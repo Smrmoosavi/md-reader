@@ -40,9 +40,30 @@
         <Style Selector="Button.outline:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#E4EBF3" />
         </Style>
+        <Style Selector="Button.outline.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E4EBF3" />
+        </Style>
+        <Style Selector="Button.outline.active">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#0B62C4" />
+        </Style>
         <Style Selector="Button.outline TextBlock">
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style Selector="Button.library">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.library:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E4EBF3" />
         </Style>
     </UserControl.Styles>
 
@@ -114,6 +135,27 @@
                               Content="فهرست"
                               IsCheckedChanged="TocToggle_Changed"
                               ToolTip.Tip="نمایش یا پنهان کردن فهرست مطالب" />
+                <ToggleButton x:Name="LibraryToggle"
+                              Classes="tool"
+                              Content="کتابخانه"
+                              IsCheckedChanged="LibraryToggle_Changed"
+                              ToolTip.Tip="نمایش پوشه‌ی یادداشت‌ها و جست‌وجو بین آن‌ها" />
+                <CheckBox x:Name="AutoReloadCheck"
+                          Content="بازخوانی خودکار"
+                          VerticalAlignment="Center"
+                          Margin="10,0,0,6"
+                          IsCheckedChanged="AutoReloadCheck_Changed"
+                          ToolTip.Tip="اگر فایل روی دیسک تغییر کرد، خودکار دوباره خوانده شود" />
+                <Button Classes="tool"
+                        Content="خروجی"
+                        ToolTip.Tip="کپی به‌صورت متن غنی یا ذخیره‌ی PDF">
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuItem Header="کپی متن (غنی)" Click="CopyRichText_Click" />
+                            <MenuItem Header="ذخیره به PDF…" Click="ExportPdf_Click" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
             </WrapPanel>
         </Border>
 
@@ -179,9 +221,73 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
+            <Border x:Name="LibraryPanel"
+                    Grid.Column="0"
+                    Width="290"
+                    Background="#F8FAFC"
+                    BorderBrush="#E3E8EE"
+                    BorderThickness="0,0,1,0"
+                    Padding="8,10"
+                    IsVisible="False">
+                <DockPanel LastChildFill="True" FlowDirection="RightToLeft">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="کتابخانه"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#6B7580"
+                               Margin="4,0,4,6" />
+                    <Button DockPanel.Dock="Top"
+                            Classes="tool"
+                            Content="انتخاب پوشه…"
+                            HorizontalAlignment="Stretch"
+                            Margin="0,0,0,6"
+                            Click="ChooseLibraryFolder_Click" />
+                    <TextBlock x:Name="LibraryPathText"
+                               DockPanel.Dock="Top"
+                               Text="پوشه‌ای انتخاب نشده است."
+                               FontSize="11"
+                               Foreground="#98A2B3"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="4,0,4,8" />
+                    <TextBox x:Name="LibrarySearchBox"
+                             DockPanel.Dock="Top"
+                             MinHeight="30"
+                             Margin="0,0,0,6"
+                             PlaceholderText="جست‌وجو در نام و متن فایل‌ها…"
+                             TextChanged="LibrarySearchBox_TextChanged" />
+                    <TextBlock x:Name="LibraryStatusText"
+                               DockPanel.Dock="Bottom"
+                               FontSize="11"
+                               Foreground="#98A2B3"
+                               Margin="4,6,4,0"
+                               TextTrimming="CharacterEllipsis" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="LibraryList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:LibraryItem">
+                                    <Button Classes="library" Click="LibraryItem_Click" ToolTip.Tip="{Binding FullPath}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Header}"
+                                                       FontSize="12"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}"
+                                                       FontSize="11"
+                                                       Foreground="#6B7580"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
             <ScrollViewer x:Name="DocScroll"
-                          Grid.Column="0"
+                          Grid.Column="1"
                           Background="#FFFFFF"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto">
@@ -189,7 +295,7 @@
             </ScrollViewer>
 
             <Border x:Name="OutlinePanel"
-                    Grid.Column="1"
+                    Grid.Column="2"
                     Width="250"
                     Background="#F8FAFC"
                     BorderBrush="#E3E8EE"
@@ -218,6 +324,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="rendering:OutlineEntry">
                                     <Button Classes="outline"
+                                            Classes.active="{Binding IsActive}"
                                             Content="{Binding Title}"
                                             Margin="{Binding Indent}"
                                             Click="OutlineItem_Click"
@@ -236,12 +343,18 @@
                 BorderThickness="0,1,0,0"
                 Padding="12,7">
             <DockPanel LastChildFill="True">
-                <TextBlock x:Name="CountText"
-                           DockPanel.Dock="Left"
-                           FlowDirection="RightToLeft"
-                           FontSize="12"
-                           Foreground="#6B7580"
-                           VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="10">
+                    <TextBlock x:Name="ProgressText"
+                               FontSize="12"
+                               Foreground="#6B7580"
+                               VerticalAlignment="Center"
+                               ToolTip.Tip="درصد خوانده‌شده از سند" />
+                    <TextBlock x:Name="CountText"
+                               FlowDirection="RightToLeft"
+                               FontSize="12"
+                               Foreground="#6B7580"
+                               VerticalAlignment="Center" />
+                </StackPanel>
                 <TextBlock x:Name="FileText"
                            Text="فایلی باز نشده است"
                            FlowDirection="RightToLeft"

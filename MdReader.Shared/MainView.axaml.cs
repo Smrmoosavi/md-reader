@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
@@ -15,6 +14,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using MdReader.Export;
 using MdReader.Rendering;
 
 namespace MdReader;
@@ -73,6 +73,8 @@ public partial class MainView : UserControl
     /// <summary>The font shipped inside the app, so Persian text looks the same everywhere.</summary>
     private const string EmbeddedFontName = "avares://MdReader.Shared/assets/fonts#Vazirmatn";
 
+    private static readonly bool IsMobile = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
+
     public static readonly string AppVersion = ResolveVersion();
 
     private static readonly FontFamily EmbeddedFont = new(EmbeddedFontName);
@@ -85,30 +87,36 @@ public partial class MainView : UserControl
 
     private readonly MarkdownRenderOptions _options = new();
     private readonly ObservableCollection<DocumentTab> _tabs = new();
+    private readonly ObservableCollection<LibraryItem> _libraryItems = new();
+    private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly AppSettings _settings = AppSettings.Load();
 
     private DocumentTab? _current;
     private bool _suppressEvents;
     private bool _suppressTabEvents;
     private bool _suppressSearch;
+    private bool _updatingPosition;
 
     private string _searchQuery = string.Empty;
     private int _matchIndex;
 
-    static MainView()
-    {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-    }
+    private string? _libraryRoot;
+    private List<string> _libraryFiles = new();
+    private DispatcherTimer? _libraryTimer;
+    private DispatcherTimer? _reloadTimer;
+    private string _pendingReloadPath = string.Empty;
 
     public MainView()
     {
         InitializeComponent();
 
         DocTabs.ItemsSource = _tabs;
+        LibraryList.ItemsSource = _libraryItems;
 
         _options.NavigateToAnchor = NavigateToAnchor;
         _options.BaseFontSize = FontSizes.Contains(_settings.BaseFontSize) ? _settings.BaseFontSize : 16;
         _options.Rtl = _settings.Rtl;
+        _options.DocumentDirectory = null;
 
         LoadFontFamilies();
         LoadFontSizes();
@@ -116,8 +124,13 @@ public partial class MainView : UserControl
         _suppressEvents = true;
         RtlCheckBox.IsChecked = _settings.Rtl;
         TocToggle.IsChecked = _settings.OutlineVisible;
+        AutoReloadCheck.IsChecked = _settings.AutoReload;
         _suppressEvents = false;
         OutlinePanel.IsVisible = _settings.OutlineVisible;
+
+        // The library panel lists folders on disk; Android picks documents one at a time.
+        LibraryToggle.IsVisible = !IsMobile;
+        LibraryPanel.IsVisible = false;
 
         ShowEmptyState();
 
@@ -125,6 +138,12 @@ public partial class MainView : UserControl
         AddHandler(DragDrop.DragOverEvent, View_DragOver);
         AddHandler(DragDrop.DropEvent, View_Drop);
         AddHandler(PointerWheelChangedEvent, View_PointerWheelChanged, RoutingStrategies.Tunnel);
+
+        DocScroll.ScrollChanged += (_, _) => UpdateReadingPosition();
+        ExternalOpen.PendingChanged += OnExternalOpen;
+
+        RestoreLibrary();
+        ConsumeExternalOpen();
     }
 
     /// <summary>Raised when the open document changes; the desktop window uses it for its title bar.</summary>
@@ -145,7 +164,8 @@ public partial class MainView : UserControl
         return plus > 0 ? info[..plus] : info;
     }
 
-    /// <summary>Applies command line arguments (desktop only: <c>--rtl</c> and optional file paths).</summary>
+    /// <summary>Applies command line arguments (desktop only: <c>--rtl</c>, <c>--watch</c> and
+    /// optional file paths). Without file paths the tabs of the previous session are restored.</summary>
     public async void ApplyStartArguments(string[] args)
     {
         if (args.Any(a => a.Equals("--rtl", StringComparison.OrdinalIgnoreCase)))
@@ -156,7 +176,24 @@ public partial class MainView : UserControl
             _options.Rtl = true;
         }
 
-        foreach (var path in args.Where(a => !a.StartsWith('-') && System.IO.File.Exists(a)))
+        if (args.Any(a => a.Equals("--watch", StringComparison.OrdinalIgnoreCase)))
+        {
+            _suppressEvents = true;
+            AutoReloadCheck.IsChecked = true;
+            _suppressEvents = false;
+            _settings.AutoReload = true;
+            UpdateWatchers();
+        }
+
+        var paths = args.Where(a => !a.StartsWith('-') && System.IO.File.Exists(a)).ToList();
+
+        if (paths.Count == 0)
+        {
+            await RestoreSessionAsync();
+            return;
+        }
+
+        foreach (var path in paths)
         {
             await OpenPathAsync(path);
         }
@@ -284,6 +321,7 @@ public partial class MainView : UserControl
         _settings.OutlineVisible = TocToggle.IsChecked == true;
         OutlinePanel.IsVisible = _settings.OutlineVisible;
         SaveSettings();
+        UpdateReadingPosition();
     }
 
     private void OutlineItem_Click(object? sender, RoutedEventArgs e)
@@ -291,6 +329,14 @@ public partial class MainView : UserControl
         if ((sender as Control)?.DataContext is OutlineEntry entry)
         {
             entry.Target.BringIntoView();
+
+            if (_current?.Rendered?.Outline is { } outline)
+            {
+                foreach (var item in outline)
+                {
+                    item.IsActive = ReferenceEquals(item, entry);
+                }
+            }
         }
 
         e.Handled = true;
@@ -319,6 +365,16 @@ public partial class MainView : UserControl
         else if (ctrl && e.Key == Key.F)
         {
             ShowSearch();
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.P && _current != null)
+        {
+            ExportPdf_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.C && (e.KeyModifiers & KeyModifiers.Shift) != 0 && _current != null)
+        {
+            CopyRichText_Click(this, new RoutedEventArgs());
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SearchBar.IsVisible)
@@ -381,6 +437,383 @@ public partial class MainView : UserControl
         {
             await OpenFileAsync(file);
         }
+    }
+
+    // ---------- library ----------
+
+    private async void ChooseLibraryFolder_Click(object? sender, RoutedEventArgs e)
+    {
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storage == null || !storage.CanPickFolder)
+        {
+            LibraryStatusText.Text = "این سیستم انتخاب پوشه را پشتیبانی نمی‌کند.";
+            return;
+        }
+
+        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "انتخاب پوشه‌ی یادداشت‌ها",
+            AllowMultiple = false,
+        });
+
+        var path = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        _settings.LibraryPath = path;
+        SaveSettings();
+
+        LoadLibrary(path);
+        LibraryPanel.IsVisible = true;
+
+        _suppressEvents = true;
+        LibraryToggle.IsChecked = true;
+        _suppressEvents = false;
+    }
+
+    private void LibraryToggle_Changed(object? sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        LibraryPanel.IsVisible = LibraryToggle.IsChecked == true;
+
+        if (LibraryPanel.IsVisible && _libraryRoot == null && !string.IsNullOrEmpty(_settings.LibraryPath))
+        {
+            LoadLibrary(_settings.LibraryPath!);
+        }
+    }
+
+    private void RestoreLibrary()
+    {
+        if (!IsMobile && !string.IsNullOrEmpty(_settings.LibraryPath) && Directory.Exists(_settings.LibraryPath))
+        {
+            LoadLibrary(_settings.LibraryPath!);
+        }
+    }
+
+    private void LoadLibrary(string root)
+    {
+        try
+        {
+            _libraryRoot = root;
+            _libraryFiles = LibraryScanner.Files(root);
+            LibraryPathText.Text = root;
+            LibraryPathText.Foreground = new SolidColorBrush(Color.Parse("#4B5563"));
+            RefreshLibraryList();
+        }
+        catch (Exception ex)
+        {
+            LibraryStatusText.Text = "پوشه خوانده نشد: " + ex.Message;
+        }
+    }
+
+    private void LibrarySearchBox_TextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_libraryRoot == null)
+        {
+            return;
+        }
+
+        // Searching file contents touches the disk, so it waits for a short pause in typing.
+        _libraryTimer?.Stop();
+        _libraryTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _libraryTimer.Tick += (_, _) =>
+        {
+            _libraryTimer?.Stop();
+            RefreshLibraryList();
+        };
+        _libraryTimer.Start();
+    }
+
+    private void RefreshLibraryList()
+    {
+        _libraryItems.Clear();
+
+        if (_libraryRoot == null)
+        {
+            LibraryStatusText.Text = "پوشه‌ای انتخاب نشده است.";
+            return;
+        }
+
+        var query = LibrarySearchBox.Text ?? string.Empty;
+
+        try
+        {
+            foreach (var item in LibraryScanner.Search(_libraryFiles, _libraryRoot, query))
+            {
+                _libraryItems.Add(item);
+            }
+
+            LibraryStatusText.Text = query.Trim().Length == 0
+                ? $"{_libraryFiles.Count.ToString(CultureInfo.CurrentCulture)} فایل"
+                : $"{_libraryItems.Count.ToString(CultureInfo.CurrentCulture)} نتیجه";
+        }
+        catch (Exception ex)
+        {
+            LibraryStatusText.Text = "جست‌وجو انجام نشد: " + ex.Message;
+        }
+    }
+
+    private async void LibraryItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not LibraryItem item)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await OpenPathAsync(item.FullPath);
+
+        if (_current == null || item.Query is not { Length: > 0 } query)
+        {
+            return;
+        }
+
+        // Re-run the panel's query inside the opened document and jump to the same occurrence.
+        _suppressSearch = true;
+        SearchBox.Text = query;
+        _suppressSearch = false;
+
+        _searchQuery = query;
+        _matchIndex = 0;
+        SearchBar.IsVisible = true;
+        Refresh(preserveScroll: true);
+
+        var hosts = _current.Rendered?.MatchHosts;
+        if (hosts is { Count: > 0 })
+        {
+            _matchIndex = Math.Clamp(item.MatchOrdinal, 0, hosts.Count - 1);
+            hosts[_matchIndex].BringIntoView();
+            UpdateSearchStatus();
+        }
+    }
+
+    // ---------- export ----------
+
+    private async void CopyRichText_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_current == null)
+        {
+            return;
+        }
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var html = MarkdownRenderer.ToHtml(_current.Markdown);
+
+            // Avalonia 12 replaced DataObject with DataTransfer/DataTransferItem; both HTML
+            // flavours are set so pasting works on Windows and on X11/Wayland.
+            var item = new DataTransferItem();
+            item.Set(DataFormat.Text, MarkdownRenderer.ToPlainText(_current.Markdown));
+            item.Set(DataFormat.CreateStringPlatformFormat("text/html"), html);
+            item.Set(DataFormat.CreateStringPlatformFormat("HTML Format"), RichText.ToCfHtml(html));
+
+            var data = new DataTransfer();
+            data.Add(item);
+            await clipboard.SetDataAsync(data);
+            FileText.Text = "متن به‌صورت غنی کپی شد.";
+        }
+        catch (Exception ex)
+        {
+            FileText.Text = "کپی نشد: " + ex.Message;
+        }
+    }
+
+    private async void ExportPdf_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_current == null)
+        {
+            return;
+        }
+
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storage is not { CanSave: true })
+        {
+            FileText.Text = "ذخیره‌ی فایل در این سیستم پشتیبانی نمی‌شود.";
+            return;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(_current.Path ?? _current.Header);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = "document";
+        }
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "ذخیره به PDF",
+            SuggestedFileName = name + ".pdf",
+            DefaultExtension = "pdf",
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType("PDF")
+                {
+                    Patterns = new[] { "*.pdf" },
+                    MimeTypes = new[] { "application/pdf" },
+                },
+            },
+        });
+
+        if (file == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await file.OpenWriteAsync();
+            var pages = PdfExporter.Export(_current.Markdown, _options, stream);
+            FileText.Text = $"PDF ذخیره شد ({pages.ToString(CultureInfo.CurrentCulture)} صفحه).";
+        }
+        catch (Exception ex)
+        {
+            FileText.Text = "PDF ذخیره نشد: " + ex.Message;
+        }
+    }
+
+    // ---------- auto reload ----------
+
+    private void AutoReloadCheck_Changed(object? sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        _settings.AutoReload = AutoReloadCheck.IsChecked == true;
+        SaveSettings();
+        UpdateWatchers();
+    }
+
+    private void UpdateWatchers()
+    {
+        var enabled = AutoReloadCheck.IsChecked == true && !IsMobile;
+        var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (enabled)
+        {
+            foreach (var tab in _tabs)
+            {
+                if (tab.Path is { } path && Path.GetDirectoryName(path) is { Length: > 0 } directory)
+                {
+                    wanted.Add(directory);
+                }
+            }
+        }
+
+        foreach (var directory in _watchers.Keys.ToList())
+        {
+            if (!wanted.Contains(directory))
+            {
+                _watchers[directory].Dispose();
+                _watchers.Remove(directory);
+            }
+        }
+
+        if (!enabled)
+        {
+            return;
+        }
+
+        foreach (var directory in wanted)
+        {
+            if (_watchers.ContainsKey(directory))
+            {
+                continue;
+            }
+
+            try
+            {
+                var watcher = new FileSystemWatcher(directory)
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+                    EnableRaisingEvents = true,
+                };
+
+                watcher.Changed += OnWatchedFileChanged;
+                watcher.Created += OnWatchedFileChanged;
+                watcher.Renamed += (_, args) => OnWatchedFileChanged(watcher, args);
+                _watchers[directory] = watcher;
+            }
+            catch (Exception)
+            {
+                // A folder we cannot watch simply does not get auto reload.
+            }
+        }
+    }
+
+    private void OnWatchedFileChanged(object? sender, FileSystemEventArgs e) =>
+        Dispatcher.UIThread.Post(() => ScheduleReload(e.FullPath));
+
+    private void ScheduleReload(string path)
+    {
+        _pendingReloadPath = path;
+        _reloadTimer?.Stop();
+
+        _reloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _reloadTimer.Tick += (_, _) =>
+        {
+            _reloadTimer?.Stop();
+            ReloadWatchedFile(_pendingReloadPath);
+        };
+        _reloadTimer.Start();
+    }
+
+    private void ReloadWatchedFile(string path)
+    {
+        foreach (var tab in _tabs.Where(t => t.Path != null && t.Path.Equals(path, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            try
+            {
+                var text = TextLoader.Read(System.IO.File.ReadAllBytes(path));
+                if (text == tab.Markdown)
+                {
+                    continue;
+                }
+
+                tab.Markdown = text;
+
+                if (ReferenceEquals(tab, _current))
+                {
+                    Refresh(preserveScroll: true);
+                    UpdateStatus();
+                }
+                else
+                {
+                    tab.Rendered = null;
+                }
+            }
+            catch (Exception)
+            {
+                // The file may be mid-save; the next change notification tries again.
+            }
+        }
+    }
+
+    // ---------- external files ----------
+
+    private void OnExternalOpen(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(ConsumeExternalOpen);
+
+    private void ConsumeExternalOpen()
+    {
+        if (ExternalOpen.Take() is not { } pending)
+        {
+            return;
+        }
+
+        CommitDocument(pending.Name, null, null, TextLoader.Read(pending.Bytes), false);
     }
 
     // ---------- search ----------
@@ -573,6 +1006,7 @@ public partial class MainView : UserControl
 
         Refresh(preserveScroll: false);
         UpdateStatus();
+        UpdateWatchers();
     }
 
     private void CloseTab(DocumentTab tab)
@@ -599,6 +1033,8 @@ public partial class MainView : UserControl
             ShowEmptyState();
             UpdateOutline();
             UpdateStatus();
+            UpdateSession();
+            UpdateWatchers();
             DocumentTitleChanged?.Invoke(this, $"MD Reader {AppVersion}");
             return;
         }
@@ -623,7 +1059,7 @@ public partial class MainView : UserControl
         try
         {
             var bytes = await ReadAllBytesAsync(file);
-            CommitDocument(file.Name, file.TryGetLocalPath(), file, ReadText(bytes), replaceCurrent);
+            CommitDocument(file.Name, file.TryGetLocalPath(), file, TextLoader.Read(bytes), replaceCurrent);
         }
         catch (Exception ex)
         {
@@ -637,7 +1073,7 @@ public partial class MainView : UserControl
         {
             var bytes = System.IO.File.ReadAllBytes(path);
             var file = await TryGetStorageFileAsync(path);
-            CommitDocument(System.IO.Path.GetFileName(path), path, file, ReadText(bytes), replaceCurrent);
+            CommitDocument(System.IO.Path.GetFileName(path), path, file, TextLoader.Read(bytes), replaceCurrent);
         }
         catch (Exception ex)
         {
@@ -691,6 +1127,53 @@ public partial class MainView : UserControl
         }
 
         ActivateTab(tab);
+
+        if (path != null)
+        {
+            _settings.AddRecent(path);
+        }
+
+        UpdateSession();
+        SaveSettings();
+        UpdateWatchers();
+    }
+
+    private void UpdateSession()
+    {
+        _settings.Session.Clear();
+
+        foreach (var tab in _tabs)
+        {
+            if (tab.Path != null && _settings.Session.Count < AppSettings.MaxSession)
+            {
+                _settings.Session.Add(tab.Path);
+            }
+        }
+
+        // Files opened from a picker have no path, so a session of only such tabs is empty.
+        SaveSettings();
+    }
+
+    private async Task RestoreSessionAsync()
+    {
+        var paths = _settings.Session
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Where(System.IO.File.Exists)
+            .Take(AppSettings.MaxSession)
+            .ToList();
+
+        foreach (var path in paths)
+        {
+            await OpenPathAsync(path);
+        }
+
+        if (paths.Count > 0)
+        {
+            // Reopening a session must not look like a fresh open in the title bar.
+            DocumentTitleChanged?.Invoke(this, _current is null
+                ? $"MD Reader {AppVersion}"
+                : $"{_current.Header} — MD Reader {AppVersion}");
+        }
     }
 
     private void ShowOpenError(Exception ex)
@@ -698,6 +1181,7 @@ public partial class MainView : UserControl
         FileText.Text = $"فایل باز نشد: {ex.Message}";
         FileText.Foreground = new SolidColorBrush(Color.Parse("#B42318"));
         CountText.Text = string.Empty;
+        ProgressText.Text = string.Empty;
     }
 
     private void Refresh(bool preserveScroll = true)
@@ -724,6 +1208,13 @@ public partial class MainView : UserControl
 
         var offset = preserveScroll ? DocScroll.Offset.Y : _current.ScrollOffset;
 
+        _options.DocumentDirectory = _current.Path is { Length: > 0 } path
+            ? System.IO.Path.GetDirectoryName(path)
+            : null;
+
+        var viewportWidth = DocScroll.Viewport.Width;
+        _options.MaxImageWidth = viewportWidth > 240 ? Math.Min(760, viewportWidth - 80) : 560;
+
         var query = _searchQuery.Trim();
         _options.SearchQuery = query.Length > 0 ? query : null;
 
@@ -738,6 +1229,9 @@ public partial class MainView : UserControl
 
         UpdateOutline();
         UpdateSearchStatus();
+
+        // Layout has to settle before headings know where they are on screen.
+        Dispatcher.UIThread.Post(UpdateReadingPosition, DispatcherPriority.Loaded);
     }
 
     private void UpdateOutline()
@@ -748,6 +1242,70 @@ public partial class MainView : UserControl
         var empty = outline == null || outline.Count == 0;
         OutlineEmpty.IsVisible = empty;
         OutlineList.IsVisible = !empty;
+    }
+
+    // ---------- reading position ----------
+
+    /// <summary>Highlights the heading of the section at the top of the viewport and updates the
+    /// reading percentage in the status bar.</summary>
+    private void UpdateReadingPosition()
+    {
+        if (_updatingPosition)
+        {
+            return;
+        }
+
+        _updatingPosition = true;
+
+        try
+        {
+            if (_current?.Rendered?.Outline is { Count: > 0 } outline)
+            {
+                OutlineEntry? active = null;
+
+                foreach (var entry in outline)
+                {
+                    var point = entry.Target.TranslatePoint(new Point(0, 0), DocHost);
+                    if (point is { } position && position.Y <= 48)
+                    {
+                        active = entry;
+                    }
+                }
+
+                foreach (var entry in outline)
+                {
+                    entry.IsActive = ReferenceEquals(entry, active);
+                }
+            }
+
+            UpdateProgress();
+        }
+        finally
+        {
+            _updatingPosition = false;
+        }
+    }
+
+    private void UpdateProgress()
+    {
+        if (_current == null)
+        {
+            ProgressText.Text = string.Empty;
+            return;
+        }
+
+        var extent = DocScroll.Extent.Height;
+        var viewport = DocScroll.Viewport.Height;
+
+        if (extent <= viewport + 1 || viewport <= 0)
+        {
+            ProgressText.Text = "۱۰۰٪";
+            return;
+        }
+
+        var maximum = Math.Max(1, extent - viewport);
+        var percent = (int)Math.Round(Math.Clamp(DocScroll.Offset.Y / maximum, 0, 1) * 100);
+        ProgressText.Text = $"{percent.ToString(CultureInfo.CurrentCulture)}٪";
     }
 
     private void ApplyFontSize(double size)
@@ -774,6 +1332,8 @@ public partial class MainView : UserControl
             SizeCombo.SelectedItem = size;
         }
         _suppressEvents = false;
+
+        UpdateReadingPosition();
     }
 
     private void StepFontSize(int direction)
@@ -803,6 +1363,7 @@ public partial class MainView : UserControl
         }
 
         DocHost.Children.Clear();
+        ProgressText.Text = string.Empty;
 
         var direction = _options.Rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         var align = _options.Rtl ? TextAlignment.Right : TextAlignment.Left;
@@ -841,6 +1402,8 @@ public partial class MainView : UserControl
                      ("Ctrl + W", "بستن تب فعلی"),
                      ("Ctrl + F", "جست‌وجو در سند (Enter = نتیجه بعدی)"),
                      ("F5", "بازخوانی فایل فعلی"),
+                     ("Ctrl + P", "ذخیره به PDF"),
+                     ("Ctrl + Shift + C", "کپی متن به‌صورت غنی"),
                      ("Ctrl + + / Ctrl + −", "بزرگ و کوچک کردن فونت"),
                      ("Ctrl + 0", "بازگشت فونت به اندازه پیش‌فرض"),
                  })
@@ -862,7 +1425,61 @@ public partial class MainView : UserControl
             panel.Children.Add(row);
         }
 
+        AddRecentFiles(panel, align);
+
         DocHost.Children.Add(panel);
+    }
+
+    private void AddRecentFiles(StackPanel panel, TextAlignment align)
+    {
+        var recent = _settings.Recent
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Take(AppSettings.MaxRecent)
+            .ToList();
+
+        var existing = recent.Where(System.IO.File.Exists).ToList();
+
+        if (existing.Count == 0)
+        {
+            return;
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "اخیراً باز شده",
+            FontSize = _options.BaseFontSize * 0.95,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(Color.Parse("#24292F")),
+            TextAlignment = align,
+            Margin = new Thickness(0, 16, 0, 6),
+        });
+
+        foreach (var path in existing)
+        {
+            var button = new Button
+            {
+                Content = System.IO.Path.GetFileName(path),
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                Padding = new Thickness(8, 3),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                FontSize = _options.BaseFontSize * 0.9,
+                Foreground = new SolidColorBrush(Color.Parse("#0B62C4")),
+                Cursor = new Cursor(StandardCursorType.Hand),
+            };
+
+            ToolTip.SetTip(button, path);
+            var target = path;
+            button.Click += async (_, _) => await OpenPathAsync(target);
+            panel.Children.Add(button);
+        }
+
+        // Files that disappeared are dropped from the list the next time it is shown.
+        foreach (var missing in recent.Except(existing).ToList())
+        {
+            _settings.RemoveRecent(missing);
+        }
     }
 
     private void LoadFontFamilies()
@@ -926,6 +1543,7 @@ public partial class MainView : UserControl
         {
             FileText.Text = "فایلی باز نشده است";
             CountText.Text = string.Empty;
+            ProgressText.Text = string.Empty;
             return;
         }
 
@@ -936,34 +1554,6 @@ public partial class MainView : UserControl
             "{0:N0} کلمه · {1:N0} کاراکتر",
             words,
             _current.Markdown.Length);
-    }
-
-    private static string ReadText(byte[] bytes)
-    {
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-        {
-            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
-        }
-
-        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-        {
-            return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
-        }
-
-        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
-        {
-            return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
-        }
-
-        try
-        {
-            return new UTF8Encoding(false, true).GetString(bytes);
-        }
-        catch (DecoderFallbackException)
-        {
-            // Legacy Windows-1256 files (common for older Persian text).
-            return Encoding.GetEncoding(1256).GetString(bytes);
-        }
     }
 
     // ---------- scrolling helpers ----------

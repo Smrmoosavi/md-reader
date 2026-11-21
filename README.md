@@ -5,9 +5,16 @@
 ## امکانات
 
 - باز کردن فایل‌های `.md` (و `.txt`) با دکمه، میان‌بر یا کشیدن فایل روی پنجره (کشیدن فایل مخصوص دسکتاپ است)
+- **فایل‌های اخیر و بازیابی نشست**: فایل‌های اخیراً باز‌شده در صفحه‌ی خالی فهرست می‌شوند و با باز کردن دوباره‌ی برنامه، تب‌های جلسه‌ی قبل هم برمی‌گردند
 - هر فایل در **تب جداگانه** باز می‌شود: انتخاب چند فایل با هم، جابه‌جایی بین تب‌ها، بستن با ✕ یا `Ctrl + W`، و نگه‌داشتن جای اسکرول هر تب
 - **جست‌وجو در سند** با `Ctrl + F`: همه‌ی نتیجه‌ها هایلایت می‌شوند و با `Enter` / `Shift + Enter` بین آن‌ها جابه‌جا می‌شوید
-- **فهرست مطالب** از تیترهای سند در ستون کنار (دکمه‌ی «فهرست»، قابل خاموش/روشن و ماندگار): با کلیک روی هر تیتر به همان بخش می‌روید
+- **فهرست مطالب** از تیترهای سند در ستون کنار (دکمه‌ی «فهرست»، قابل خاموش/روشن و ماندگار): با کلیک روی هر تیتر به همان بخش می‌روید، و هنگام اسکرول تیتر بخش جاری در فهرست برجسته می‌شود
+- **درصد مطالعه** در نوار وضعیت نشان می‌دهد چقدر از سند را خوانده‌اید
+- **کتابخانه** (دسکتاپ): یک پوشه را انتخاب کنید تا فایل‌های Markdown آن در ستون کنار فهرست شوند و بتوانید بین نام و متن همه‌ی فایل‌ها جست‌وجو کنید؛ کلیک روی نتیجه همان فایل را باز می‌کند و به محل آن می‌رود
+- **نمایش تصاویر** سند (مسیرهای نسبی، مطلق و `data:`؛ به اینترنت وصل نمی‌شود)
+- **رنگ‌آمیزی کد** در بلوک‌های کد برای زبان‌های رایج (C#، JS/TS، Python، Shell، SQL، HTML/XML، JSON و…)
+- **بازخوانی خودکار**: اگر فایل روی دیسک تغییر کند، تب دوباره خوانده می‌شود (با سوییچ `--watch` هم روشن می‌شود)
+- **خروجی**: کپی متن به‌صورت **متن غنی** (برای چسباندن در Word، ایمیل و…) و **ذخیره به PDF**
 - پرش به **لینک‌های داخلی** سند (`#heading`) بدون باز کردن مرورگر
 - **ذخیره‌ی تنظیمات**: فونت، اندازه، RTL و نمایش فهرست مطالب با بستن برنامه از دست نمی‌روند
 - **فونت Vazirmatn همراه برنامه** (جاسازی‌شده) به‌عنوان فونت پیش‌فرض، تا متن فارسی روی همه‌ی سیستم‌ها و در اندروید یکسان دیده شود
@@ -30,7 +37,8 @@
 ```bash
 dotnet run -- sample.md          # باز کردن یک فایل
 dotnet run -- sample.md --rtl    # شروع با حالت راست‌به‌چپ روشن
-dotnet run                       # بدون فایل (صفحه‌ی خالی)
+dotnet run -- sample.md --watch  # بازخوانی خودکار هنگام تغییر فایل
+dotnet run                       # بدون فایل (صفحه‌ی خالی یا تب‌های جلسه‌ی قبل)
 ```
 
 ساخت و اجرای مستقیم:
@@ -90,6 +98,8 @@ dotnet build MdReader.Android/MdReader.Android.csproj -t:Run -f net10.0-android
 | `Enter` / `Shift + Enter` | نتیجه‌ی بعدی / قبلی (داخل کادر جست‌وجو) |
 | `Escape` | بستن کادر جست‌وجو |
 | `F5` | بازخوانی فایل فعلی |
+| `Ctrl + P` | ذخیره‌ی سند به PDF |
+| `Ctrl + Shift + C` | کپی سند به‌صورت متن غنی (HTML) |
 | `Ctrl + +` / `Ctrl + −` | بزرگ و کوچک کردن فونت |
 | `Ctrl + چرخ ماوس` | تغییر اندازه‌ی فونت |
 | `Ctrl + 0` | بازگشت به اندازه‌ی پیش‌فرض |
@@ -118,31 +128,24 @@ MdReaderSetup.exe [--install|--uninstall] [--silent] [--dir <path>] [--ext .md]
 
 ## ثبت به‌عنوان بازکننده‌ی فایل‌های Markdown در لینوکس و مک
 
-در **macOS** پس از اجرای برنامه، روی یک فایل `.md` راست‌کلیک کنید → **Open With** → **Other…** → MD Reader → تیک **Always Open With**.
+در **macOS** آرشیو ریلیز به‌صورت `MdReader.app` است و `Packaging/Info.plist` نوع سند Markdown را اعلام می‌کند؛ پس از بیرون آوردن برنامه، روی یک فایل `.md` راست‌کلیک کنید → **Open With** → MD Reader (یا با `open -a MdReader file.md`). برنامه امضای کد Apple ندارد، بنابراین بار اول ممکن است لازم باشد روی برنامه راست‌کلیک → **Open** بزنید.
 
-در **لینوکس** یک فایل `~/.local/share/applications/mdreader.desktop` بسازید:
-
-```ini
-[Desktop Entry]
-Type=Application
-Name=MD Reader
-Exec=/path/to/MdReader %f
-Icon=/path/to/assets/MdReader.png
-MimeType=text/markdown;
-Terminal=false
-```
-
-سپس:
+در **لینوکس** فایل `mdreader.desktop` همراه آرشیو می‌آید؛ آن را در جای مناسب بگذارید و مسیر `Exec` را اصلاح کنید:
 
 ```bash
+cp mdreader.desktop ~/.local/share/applications/
+sed -i "s|Exec=MdReader|Exec=/path/to/MdReader|" ~/.local/share/applications/mdreader.desktop
 xdg-mime default mdreader.desktop text/markdown
 ```
+
+در **اندروید** برنامه برای اکشن‌های `VIEW` و `SEND` روی `text/plain` و `text/markdown` ثبت شده است، بنابراین از فایل‌منیجر یا منوی «ارسال به» هم می‌توانید فایل را در MD Reader باز کنید.
 
 ## ساختار پروژه
 
 - `Directory.Build.props` — تنها جای تعریف **شماره‌ی نسخه**؛ دسکتاپ، کتابخانه‌ی مشترک، اندروید و نصب‌کننده‌ی ویندوز از همین می‌خوانند
 - `MdReader.csproj` / `Program.cs` — هد دسکتاپ (بخش فقط‌ویندوز/دسکتاپ برنامه)
-- `MdReader.Shared/` — کتابخانه‌ی مشترک: `App.axaml`، `MainView.axaml(.cs)` (کل رابط کاربری)، `AppSettings.cs` (ذخیره‌ی تنظیمات)، `Rendering/MarkdownRenderer.cs` و `assets/` (آیکون و فونت همراه در `assets/fonts/`)
+- `MdReader.Shared/` — کتابخانه‌ی مشترک: `App.axaml`، `MainView.axaml(.cs)` (کل رابط کاربری)، `AppSettings.cs` (تنظیمات، فایل‌های اخیر و نشست)، `TextLoader.cs` (تشخیص انکودینگ)، `ExternalOpen.cs` (فایل‌هایی که سیستم‌عامل به برنامه می‌دهد)، `LibraryScanner.cs` (فهرست و جست‌وجوی پوشه)، `Rendering/` (رندرکننده، بارگذار تصویر و رنگ‌آمیزی کد)، `Export/` (PDF و متن غنی) و `assets/` (آیکون و فونت همراه در `assets/fonts/`)
+- `Packaging/` — `mdreader.desktop` برای لینوکس و `Info.plist` برای بسته‌ی `.app` مک (workflow آن‌ها را در آرشیوها می‌گذارد)
 - `MdReader.Android/` — هد اندروید: `MainActivity`، مانیفست، آیکون و تم
 - `Installer/` — برنامه‌ی نصب ویندوز (پروژه‌ی جدا؛ در ساخت برنامه‌ی اصلی نادیده گرفته می‌شود)
 
@@ -170,8 +173,8 @@ git push origin v1.0.0
 - `MdReaderSetup.exe` — برنامه‌ی نصب ویندوز (از نسخه‌ی win-x64 ساخته می‌شود)
 - `MdReader-win-x64.zip`
 - `MdReader-linux-x64.tar.gz`
-- `MdReader-osx-arm64.tar.gz` (مک با پردازنده‌ی Apple Silicon)
-- `MdReader-osx-x64.tar.gz` (مک با پردازنده‌ی Intel)
+- `MdReader-osx-arm64.tar.gz` (مک با پردازنده‌ی Apple Silicon؛ شامل `MdReader.app`)
+- `MdReader-osx-x64.tar.gz` (مک با پردازنده‌ی Intel؛ شامل `MdReader.app`)
 - `com.smrmoosavi.mdreader-Signed.apk` (اندروید؛ با کلید debug امضا شده و برای نصب دستی کافی است)
 
 این نسخه‌ها self-contained هستند و به نصب .NET روی سیستم مقصد نیازی ندارند. اجرای دستی هم از **Actions → Release → Run workflow** ممکن است (بدون ساخت Release، فقط artifact).

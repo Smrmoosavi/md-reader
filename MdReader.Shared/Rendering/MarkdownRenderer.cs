@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -33,11 +34,19 @@ public sealed class MarkdownRenderOptions
 
     /// <summary>Called for a <c>#anchor</c> link inside the document.</summary>
     public Action<string>? NavigateToAnchor { get; set; }
+
+    /// <summary>Folder of the document; relative image paths are resolved against it.</summary>
+    public string? DocumentDirectory { get; set; }
+
+    /// <summary>Largest width an image may take, in pixels.</summary>
+    public double MaxImageWidth { get; set; } = 560;
 }
 
 /// <summary>One entry of the document outline (a heading and the control it rendered into).</summary>
-public sealed class OutlineEntry
+public sealed class OutlineEntry : INotifyPropertyChanged
 {
+    private bool _isActive;
+
     public OutlineEntry(int level, string title, Control target)
     {
         Level = level;
@@ -50,6 +59,24 @@ public sealed class OutlineEntry
     public string Title { get; }
 
     public Control Target { get; }
+
+    /// <summary>True for the heading of the section currently at the top of the viewport.</summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value)
+            {
+                return;
+            }
+
+            _isActive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActive)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>Left/right indentation for the nested outline levels.</summary>
     public Thickness Indent => new((Math.Clamp(Level, 1, 6) - 1) * 12, 0, 0, 0);
@@ -73,6 +100,9 @@ public sealed class RenderedMarkdown
     /// <summary>The text block owning each search match, in reading order.</summary>
     public List<TextBlock> MatchHosts { get; } = new();
 
+    /// <summary>How many images could actually be decoded and drawn.</summary>
+    public int ImageCount { get; internal set; }
+
     internal List<Action<double>> SizeAppliers { get; } = new();
 }
 
@@ -95,6 +125,13 @@ public static class MarkdownRenderer
     private static readonly IBrush TableHeaderBackground = Frozen(0xF5, 0xF7, 0xF9);
     private static readonly IBrush SearchBrush = Frozen(0xFF, 0xE2, 0x8A);
     private static readonly IBrush Transparent = new SolidColorBrush(Colors.Transparent);
+
+    // Code highlighting colours (GitHub light palette).
+    private static readonly IBrush CodeKeywordBrush = Frozen(0xCF, 0x22, 0x2E);
+    private static readonly IBrush CodeStringBrush = Frozen(0x0A, 0x30, 0x69);
+    private static readonly IBrush CodeCommentBrush = Frozen(0x6E, 0x77, 0x81);
+    private static readonly IBrush CodeNumberBrush = Frozen(0x05, 0x50, 0xAE);
+    private static readonly IBrush CodeTypeBrush = Frozen(0x82, 0x50, 0xDF);
 
     private static readonly double[] HeadingFactors = { 0, 1.9, 1.55, 1.32, 1.16, 1.06, 1.0 };
 
@@ -219,6 +256,12 @@ public static class MarkdownRenderer
         return inlines;
     }
 
+    /// <summary>The document as HTML, used for pasting it into other applications as rich text.</summary>
+    public static string ToHtml(string markdown) => Markdown.ToHtml(markdown ?? string.Empty, Pipeline);
+
+    /// <summary>The document as plain text (no Markdown syntax), for the plain clipboard flavour.</summary>
+    public static string ToPlainText(string markdown) => Markdown.ToPlainText(markdown ?? string.Empty, Pipeline);
+
     private static void AddHeading(HeadingBlock block, Panel target, RenderContext context)
     {
         var factor = HeadingFactors[Math.Clamp(block.Level, 1, 6)];
@@ -294,17 +337,20 @@ public static class MarkdownRenderer
             }
         }
 
-        AddPlainBlock(string.Join("\n", lines), target, context);
+        AddPlainBlock(
+            string.Join("\n", lines),
+            target,
+            context,
+            (block as FencedCodeBlock)?.Info);
     }
 
-    private static void AddPlainBlock(string text, Panel target, RenderContext context)
+    private static void AddPlainBlock(string text, Panel target, RenderContext context, string? language = null)
     {
         const double factor = 0.9;
         const double lineFactor = 1.5;
 
         var content = new SelectableTextBlock
         {
-            Text = text,
             FontFamily = new FontFamily(MonoFontFamily),
             FontSize = context.BaseSize * factor,
             Foreground = TextBrush,
@@ -319,6 +365,32 @@ public static class MarkdownRenderer
             content.FontSize = size * factor;
             content.LineHeight = size * factor * lineFactor;
         });
+
+        if (CodeHighlighter.Supports(language))
+        {
+            var inlines = new InlineCollection();
+            content.Inlines = inlines;
+
+            var inBlockComment = false;
+            var lines = SplitLines(text);
+
+            for (var i = 0; i < lines.Count; i++)
+            {
+                if (i > 0)
+                {
+                    inlines.Add(new LineBreak());
+                }
+
+                foreach (var token in CodeHighlighter.Highlight(lines[i], language, ref inBlockComment))
+                {
+                    AddCodeRun(inlines, content, token, context);
+                }
+            }
+        }
+        else
+        {
+            content.Text = text;
+        }
 
         var scroller = new ScrollViewer
         {
@@ -530,9 +602,13 @@ public static class MarkdownRenderer
                     break;
 
                 case LinkInline link when link.IsImage:
-                    var alt = PlainText(link);
-                    AddRun(target, host, string.IsNullOrWhiteSpace(alt) ? "[تصویر]" : $"[{alt}]",
-                        style.Derive(italic: true, muted: true), context);
+                    if (!AddImage(link, target, context))
+                    {
+                        var alt = PlainText(link);
+                        AddRun(target, host, string.IsNullOrWhiteSpace(alt) ? "[تصویر]" : $"[{alt}]",
+                            style.Derive(italic: true, muted: true), context);
+                    }
+
                     break;
 
                 case LinkInline link:
@@ -568,6 +644,78 @@ public static class MarkdownRenderer
                 case ContainerInline nested:
                     AddInlines(nested, host, target, style, context);
                     break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Draws an inline image. Relative paths are resolved against the document folder; when the
+    /// image cannot be read (remote URL, Android content document without a folder) the caller
+    /// falls back to the alt text.
+    /// </summary>
+    private static bool AddImage(LinkInline link, InlineCollection target, RenderContext context)
+    {
+        var image = ImageLoader.TryLoad(link.Url, context.Options.DocumentDirectory);
+        if (image == null)
+        {
+            return false;
+        }
+
+        var control = new Image
+        {
+            Source = image,
+            Stretch = Stretch.Uniform,
+            MaxWidth = context.Options.MaxImageWidth,
+            MaxHeight = 900,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        var alt = PlainText(link);
+        if (alt.Length > 0)
+        {
+            ToolTip.SetTip(control, alt);
+        }
+
+        target.Add(new InlineUIContainer
+        {
+            Child = new Border
+            {
+                Child = control,
+                Margin = new Thickness(0, 4, 0, 8),
+            },
+        });
+
+        context.Result.ImageCount++;
+        return true;
+    }
+
+    private static void AddCodeRun(InlineCollection target, TextBlock host, CodeToken token, RenderContext context)
+    {
+        var before = target.Count;
+        AddRun(target, host, token.Text, new InlineStyle(), context);
+
+        var brush = token.Kind switch
+        {
+            CodeTokenKind.Keyword => CodeKeywordBrush,
+            CodeTokenKind.String => CodeStringBrush,
+            CodeTokenKind.Comment => CodeCommentBrush,
+            CodeTokenKind.Number => CodeNumberBrush,
+            CodeTokenKind.Type => CodeTypeBrush,
+            _ => null,
+        };
+
+        if (brush == null)
+        {
+            return;
+        }
+
+        // A search match keeps its highlight background; everything else gets the token colour.
+        for (var i = before; i < target.Count; i++)
+        {
+            if (target[i] is Run run && run.Background == null)
+            {
+                run.Foreground = brush;
             }
         }
     }

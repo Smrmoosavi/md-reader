@@ -64,9 +64,23 @@ jobs:
         if: runner.os == 'Windows'
         run: Compress-Archive -Path out/${{ matrix.rid }}/* -DestinationPath ${{ matrix.archive }}
 
-      - name: Archive (macOS and Linux)
-        if: runner.os != 'Windows'
-        run: tar -czf ${{ matrix.archive }} -C out/${{ matrix.rid }} .
+      # macOS gets a proper .app bundle: without Info.plist the system cannot offer MD Reader
+      # as the opener of Markdown files.
+      - name: Bundle (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app=MdReader.app
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          cp -R out/${{ matrix.rid }}/. "$app/Contents/MacOS/"
+          sed "s/__VERSION__/${{ steps.version.outputs.version }}/g" Packaging/Info.plist > "$app/Contents/Info.plist"
+          chmod +x "$app/Contents/MacOS/MdReader"
+          tar -czf ${{ matrix.archive }} "$app"
+
+      - name: Archive (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp Packaging/mdreader.desktop out/${{ matrix.rid }}/mdreader.desktop
+          tar -czf ${{ matrix.archive }} -C out/${{ matrix.rid }} .
 
       - uses: actions/upload-artifact@v4
         with:
