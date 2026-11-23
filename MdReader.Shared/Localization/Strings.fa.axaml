@@ -23,6 +23,8 @@
     <sys:String x:Key="AutoReloadTip">اگر فایل روی دیسک تغییر کرد، خودکار دوباره خوانده شود</sys:String>
     <sys:String x:Key="Marks">نشانک‌ها</sys:String>
     <sys:String x:Key="MarksTip">نشانک، یادداشت و ادامه‌ی مطالعه</sys:String>
+    <sys:String x:Key="Settings">تنظیمات</sys:String>
+    <sys:String x:Key="CloseSettings">بستن تنظیمات</sys:String>
     <sys:String x:Key="Theme">تم</sys:String>
     <sys:String x:Key="ThemeLight">روشن</sys:String>
     <sys:String x:Key="ThemeDark">تیره</sys:String>

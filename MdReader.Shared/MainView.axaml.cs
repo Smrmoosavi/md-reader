@@ -405,6 +405,12 @@ public partial class MainView : UserControl
 
     private void FocusToggle_Click(object? sender, RoutedEventArgs e) => ApplyFocusMode(FocusToggle.IsChecked == true);
 
+    private void SettingsButton_Click(object? sender, RoutedEventArgs e) =>
+        SettingsPanel.IsVisible = !SettingsPanel.IsVisible;
+
+    private void SettingsClose_Click(object? sender, RoutedEventArgs e) =>
+        SettingsPanel.IsVisible = false;
+
     private void OutlineItem_Click(object? sender, RoutedEventArgs e)
     {
         if ((sender as Control)?.DataContext is OutlineEntry entry)
@@ -466,6 +472,11 @@ public partial class MainView : UserControl
         else if (e.Key == Key.F11)
         {
             ApplyFocusMode(!_focusMode);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && SettingsPanel.IsVisible)
+        {
+            SettingsPanel.IsVisible = false;
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SearchBar.IsVisible)
@@ -1834,11 +1845,16 @@ public partial class MainView : UserControl
         foreach (var control in new Control[]
                  {
                      ToolbarPanel, DocTabs, SearchBarGrid, MarksDock, LibraryDock, OutlineDock,
-                     StatusPanel, OutlineList,
+                     StatusPanel, OutlineList, SettingsStack,
                  })
         {
             control.FlowDirection = direction;
         }
+
+        // The gear sits at the opposite end in a right-to-left toolbar, so the panel follows it.
+        SettingsPanel.HorizontalAlignment = Lang.IsRtl
+            ? Avalonia.Layout.HorizontalAlignment.Left
+            : Avalonia.Layout.HorizontalAlignment.Right;
     }
 
     /// <summary>Re-renders the document with the palette that matches the current theme.</summary>
@@ -1902,6 +1918,7 @@ public partial class MainView : UserControl
 
         ToolbarBorder.IsVisible = !focus;
         StatusBorder.IsVisible = !focus;
+        SettingsPanel.IsVisible = false;
 
         if (!IsMobile && TopLevel.GetTopLevel(this) is Window window)
         {

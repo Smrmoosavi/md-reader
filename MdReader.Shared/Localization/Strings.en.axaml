@@ -23,6 +23,8 @@
     <sys:String x:Key="AutoReloadTip">Re-read the document when the file changes on disk</sys:String>
     <sys:String x:Key="Marks">Bookmarks</sys:String>
     <sys:String x:Key="MarksTip">Bookmarks, notes and where you stopped reading</sys:String>
+    <sys:String x:Key="Settings">Settings</sys:String>
+    <sys:String x:Key="CloseSettings">Close settings</sys:String>
     <sys:String x:Key="Theme">Theme</sys:String>
     <sys:String x:Key="ThemeLight">Light</sys:String>
     <sys:String x:Key="ThemeDark">Dark</sys:String>

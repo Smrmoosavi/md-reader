@@ -126,36 +126,6 @@
 
                 <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="{DynamicResource PanelBorder}" VerticalAlignment="Center" />
 
-                <TextBlock Text="{DynamicResource Direction}" Classes="label" />
-                <ComboBox x:Name="DirectionCombo"
-                          Width="118"
-                          Margin="0,0,6,6"
-                          MinHeight="30"
-                          VerticalAlignment="Center"
-                          SelectionChanged="DirectionCombo_Changed" />
-
-                <TextBlock Text="{DynamicResource Font}" Classes="label" />
-                <ComboBox x:Name="FontCombo"
-                          Width="180"
-                          Margin="0,0,6,6"
-                          MinHeight="30"
-                          VerticalAlignment="Center"
-                          SelectionChanged="FontCombo_SelectionChanged">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="local:FontChoice">
-                            <TextBlock Text="{Binding Label}" FontFamily="{Binding Family}" FontSize="14" />
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-
-                <TextBlock Text="{DynamicResource Size}" Classes="label" />
-                <ComboBox x:Name="SizeCombo"
-                          Width="72"
-                          Margin="0,0,6,6"
-                          MinHeight="30"
-                          VerticalAlignment="Center"
-                          SelectionChanged="SizeCombo_SelectionChanged" />
-
                 <Button Classes="tool"
                         Content="A+"
                         Click="ZoomIn_Click"
@@ -186,39 +156,6 @@
                               Content="{DynamicResource Marks}"
                               IsCheckedChanged="MarksToggle_Changed"
                               ToolTip.Tip="{DynamicResource MarksTip}" />
-                <CheckBox x:Name="AutoReloadCheck"
-                          Content="{DynamicResource AutoReload}"
-                          VerticalAlignment="Center"
-                          Margin="10,0,0,6"
-                          IsCheckedChanged="AutoReloadCheck_Changed"
-                          ToolTip.Tip="{DynamicResource AutoReloadTip}" />
-
-                <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="{DynamicResource PanelBorder}" VerticalAlignment="Center" />
-
-                <TextBlock Text="{DynamicResource Width}" Classes="label" />
-                <ComboBox x:Name="WidthCombo"
-                          Width="94"
-                          Margin="0,0,6,6"
-                          MinHeight="30"
-                          VerticalAlignment="Center"
-                          SelectionChanged="WidthCombo_Changed" />
-
-                <TextBlock Text="{DynamicResource Theme}" Classes="label" />
-                <ComboBox x:Name="ThemeCombo"
-                          Width="96"
-                          Margin="0,0,6,6"
-                          MinHeight="30"
-                          VerticalAlignment="Center"
-                          SelectionChanged="ThemeCombo_Changed" />
-
-                <TextBlock Text="{DynamicResource Language}" Classes="label" />
-                <ComboBox x:Name="LanguageCombo"
-                          Width="94"
-                          Margin="0,0,6,6"
-                          MinHeight="30"
-                          VerticalAlignment="Center"
-                          SelectionChanged="LanguageCombo_Changed" />
-
                 <ToggleButton x:Name="FocusToggle"
                               Classes="tool"
                               Content="{DynamicResource Focus}"
@@ -235,6 +172,14 @@
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
+
+                <!-- Reading options live behind this gear so the toolbar stays short. -->
+                <Button x:Name="SettingsButton"
+                        Classes="tool"
+                        Content="⚙"
+                        FontSize="15"
+                        Click="SettingsButton_Click"
+                        ToolTip.Tip="{DynamicResource Settings}" />
             </WrapPanel>
         </Border>
 
@@ -543,6 +488,117 @@
                            TextTrimming="CharacterEllipsis"
                            VerticalAlignment="Center" />
             </DockPanel>
+        </Border>
+
+        <Border x:Name="SettingsPanel"
+                Grid.Row="0"
+                Grid.RowSpan="5"
+                Width="300"
+                Margin="0,8,12,12"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                IsVisible="False"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14,12"
+                BoxShadow="0 6 18 0 #40000000">
+            <Grid RowDefinitions="Auto,*">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                    <TextBlock Grid.Column="0"
+                               Text="{DynamicResource Settings}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1"
+                            Classes="tabclose"
+                            Content="✕"
+                            Click="SettingsClose_Click"
+                            ToolTip.Tip="{DynamicResource CloseSettings}" />
+                </Grid>
+
+                <ScrollViewer Grid.Row="1"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="SettingsStack" Spacing="10" Margin="0,0,4,0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource Direction}" Classes="label" />
+                            <ComboBox x:Name="DirectionCombo"
+                                      MinHeight="30"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="DirectionCombo_Changed" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource Font}" Classes="label" />
+                            <ComboBox x:Name="FontCombo"
+                                      MinHeight="30"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="FontCombo_SelectionChanged">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="local:FontChoice">
+                                        <TextBlock Text="{Binding Label}" FontFamily="{Binding Family}" FontSize="14" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource Size}" Classes="label" />
+                            <Grid ColumnDefinitions="*,*,Auto,Auto">
+                                <ComboBox x:Name="SizeCombo"
+                                          Grid.Column="0"
+                                          MinHeight="30"
+                                          HorizontalAlignment="Stretch"
+                                          SelectionChanged="SizeCombo_SelectionChanged" />
+                                <Button Grid.Column="2"
+                                        Classes="tool"
+                                        Content="A+"
+                                        Margin="6,0,0,0"
+                                        Click="ZoomIn_Click"
+                                        ToolTip.Tip="{DynamicResource ZoomInTip}" />
+                                <Button Grid.Column="3"
+                                        Classes="tool"
+                                        Content="A−"
+                                        Margin="4,0,0,0"
+                                        Click="ZoomOut_Click"
+                                        ToolTip.Tip="{DynamicResource ZoomOutTip}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource Width}" Classes="label" />
+                            <ComboBox x:Name="WidthCombo"
+                                      MinHeight="30"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="WidthCombo_Changed" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource Theme}" Classes="label" />
+                            <ComboBox x:Name="ThemeCombo"
+                                      MinHeight="30"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="ThemeCombo_Changed" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource Language}" Classes="label" />
+                            <ComboBox x:Name="LanguageCombo"
+                                      MinHeight="30"
+                                      HorizontalAlignment="Stretch"
+                                      SelectionChanged="LanguageCombo_Changed" />
+                        </StackPanel>
+
+                        <CheckBox x:Name="AutoReloadCheck"
+                                  Content="{DynamicResource AutoReload}"
+                                  Margin="0,4,0,0"
+                                  IsCheckedChanged="AutoReloadCheck_Changed"
+                                  ToolTip.Tip="{DynamicResource AutoReloadTip}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>
