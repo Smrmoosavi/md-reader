@@ -98,6 +98,7 @@
     <sys:String x:Key="ShortcutZoom">بزرگ و کوچک کردن فونت</sys:String>
     <sys:String x:Key="ShortcutReset">بازگشت فونت به اندازه پیش‌فرض</sys:String>
     <sys:String x:Key="ShortcutFocus">حالت تمرکز</sys:String>
+    <sys:String x:Key="ShortcutSettings">باز و بسته کردن تنظیمات</sys:String>
 
     <!-- Messages -->
     <sys:String x:Key="Copied">متن به‌صورت غنی کپی شد.</sys:String>

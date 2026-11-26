@@ -98,6 +98,7 @@
     <sys:String x:Key="ShortcutZoom">Grow or shrink the font</sys:String>
     <sys:String x:Key="ShortcutReset">Reset the font size</sys:String>
     <sys:String x:Key="ShortcutFocus">Focus mode</sys:String>
+    <sys:String x:Key="ShortcutSettings">Open or close the settings</sys:String>
 
     <!-- Messages -->
     <sys:String x:Key="Copied">The text was copied as rich text.</sys:String>

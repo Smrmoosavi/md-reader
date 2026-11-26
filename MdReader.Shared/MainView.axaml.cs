@@ -14,6 +14,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using MdReader.Export;
 using MdReader.Rendering;
 
@@ -163,6 +164,11 @@ public partial class MainView : UserControl
         AddHandler(DragDrop.DragOverEvent, View_DragOver);
         AddHandler(DragDrop.DropEvent, View_Drop);
         AddHandler(PointerWheelChangedEvent, View_PointerWheelChanged, RoutingStrategies.Tunnel);
+        AddHandler(PointerPressedEvent, View_PointerPressed, RoutingStrategies.Tunnel);
+
+        // The settings card is sized by the window: every layout pass re-fits it below the toolbars
+        // and inside the available width, which keeps it usable on phones and in narrow windows.
+        LayoutUpdated += (_, _) => UpdateSettingsPanelPlacement();
 
         DocScroll.ScrollChanged += (_, _) =>
         {
@@ -406,10 +412,115 @@ public partial class MainView : UserControl
     private void FocusToggle_Click(object? sender, RoutedEventArgs e) => ApplyFocusMode(FocusToggle.IsChecked == true);
 
     private void SettingsButton_Click(object? sender, RoutedEventArgs e) =>
-        SettingsPanel.IsVisible = !SettingsPanel.IsVisible;
+        SetSettingsVisible(!SettingsPanel.IsVisible);
 
     private void SettingsClose_Click(object? sender, RoutedEventArgs e) =>
+        SetSettingsVisible(false);
+
+    private void SetSettingsVisible(bool visible)
+    {
+        if (visible)
+        {
+            UpdateSettingsPanelPlacement();
+        }
+
+        SettingsPanel.IsVisible = visible;
+    }
+
+    /// <summary>Fits the settings card into the current window: it sits just below the toolbar and
+    /// never covers the table of contents (or the side panels at its own edge), and it can never be
+    /// taller or wider than the space that is actually left.</summary>
+    private void UpdateSettingsPanelPlacement()
+    {
+        var width = Bounds.Width;
+        var height = Bounds.Height;
+
+        if (width < 1 || height < 1)
+        {
+            return;
+        }
+
+        const double gap = 12;
+        const double minWidth = 180;
+        const double maxWidth = 300;
+
+        var onLeft = Lang.IsRtl;
+
+        var reserved = onLeft
+            ? (MarksPanel.IsVisible ? SidePanelWidth(MarksPanel) : 0) +
+              (LibraryPanel.IsVisible ? SidePanelWidth(LibraryPanel) : 0)
+            : OutlinePanel.IsVisible ? SidePanelWidth(OutlinePanel) : 0;
+
+        // On a phone the side panel can be wider than the window; the card keeps its minimum
+        // width and the side panel simply shows through underneath instead of being cut off.
+        reserved = Math.Clamp(reserved, 0, Math.Max(0, width - minWidth - gap));
+
+        var top = 8 + (ToolbarBorder.IsVisible ? ToolbarBorder.Bounds.Height : 0);
+        if (DocTabs.IsVisible)
+        {
+            top += DocTabs.Bounds.Height;
+        }
+
+        if (SearchBar.IsVisible)
+        {
+            top += SearchBar.Bounds.Height;
+        }
+
+        var panelWidth = Math.Clamp(Math.Min(maxWidth, width - reserved - gap), minWidth, maxWidth);
+        var panelHeight = Math.Max(90, height - top - gap);
+
+        if (Math.Abs(SettingsPanel.Width - panelWidth) > 0.5)
+        {
+            SettingsPanel.Width = panelWidth;
+        }
+
+        if (Math.Abs(SettingsPanel.MaxHeight - panelHeight) > 0.5)
+        {
+            SettingsPanel.MaxHeight = panelHeight;
+        }
+
+        var margin = onLeft
+            ? new Thickness(reserved + gap, top, gap, gap)
+            : new Thickness(gap, top, reserved + gap, gap);
+
+        if (SettingsPanel.Margin != margin)
+        {
+            SettingsPanel.Margin = margin;
+        }
+    }
+
+    private static double SidePanelWidth(Control panel) =>
+        double.IsNaN(panel.Width) || panel.Width <= 0 ? panel.Bounds.Width : panel.Width;
+
+    /// <summary>A press anywhere outside the open settings card closes it, like a light-dismiss
+    /// popup. The gear is left alone so its own click still toggles the card.</summary>
+    private void View_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!SettingsPanel.IsVisible || e.Source is not Visual source)
+        {
+            return;
+        }
+
+        if (IsInside(source, SettingsPanel) || IsInside(source, SettingsButton))
+        {
+            return;
+        }
+
         SettingsPanel.IsVisible = false;
+    }
+
+    private static bool IsInside(Visual source, Visual container)
+    {
+        for (Visual? visual = source; visual != null; visual = visual.GetVisualParent())
+        {
+            if (ReferenceEquals(visual, container))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void OutlineItem_Click(object? sender, RoutedEventArgs e)
     {
@@ -474,9 +585,14 @@ public partial class MainView : UserControl
             ApplyFocusMode(!_focusMode);
             e.Handled = true;
         }
+        else if (ctrl && e.Key == Key.OemComma)
+        {
+            SetSettingsVisible(!SettingsPanel.IsVisible);
+            e.Handled = true;
+        }
         else if (e.Key == Key.Escape && SettingsPanel.IsVisible)
         {
-            SettingsPanel.IsVisible = false;
+            SetSettingsVisible(false);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SearchBar.IsVisible)
@@ -1696,6 +1812,7 @@ public partial class MainView : UserControl
                      ("Ctrl + O", Lang.T("ShortcutOpen")),
                      ("Ctrl + W", Lang.T("ShortcutClose")),
                      ("Ctrl + F", Lang.T("ShortcutSearch")),
+                     ("Ctrl + ,", Lang.T("ShortcutSettings")),
                      ("Ctrl + D", Lang.T("AddBookmark")),
                      ("F11", Lang.T("ShortcutFocus")),
                      ("F5", Lang.T("ShortcutReload")),
@@ -1855,6 +1972,8 @@ public partial class MainView : UserControl
         SettingsPanel.HorizontalAlignment = Lang.IsRtl
             ? Avalonia.Layout.HorizontalAlignment.Left
             : Avalonia.Layout.HorizontalAlignment.Right;
+
+        UpdateSettingsPanelPlacement();
     }
 
     /// <summary>Re-renders the document with the palette that matches the current theme.</summary>
@@ -1918,7 +2037,7 @@ public partial class MainView : UserControl
 
         ToolbarBorder.IsVisible = !focus;
         StatusBorder.IsVisible = !focus;
-        SettingsPanel.IsVisible = false;
+        SetSettingsVisible(false);
 
         if (!IsMobile && TopLevel.GetTopLevel(this) is Window window)
         {
