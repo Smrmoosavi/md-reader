@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -165,6 +166,10 @@ public partial class MainView : UserControl
         AddHandler(DragDrop.DropEvent, View_Drop);
         AddHandler(PointerWheelChangedEvent, View_PointerWheelChanged, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, View_PointerPressed, RoutingStrategies.Tunnel);
+
+        // Tab and Escape are handled on the way in, so a focused combo box cannot swallow them:
+        // the card keeps the keyboard inside itself until it is closed.
+        SettingsPanel.AddHandler(KeyDownEvent, SettingsPanel_KeyDown, RoutingStrategies.Tunnel);
 
         // The settings card is sized by the window: every layout pass re-fits it below the toolbars
         // and inside the available width, which keeps it usable on phones and in narrow windows.
@@ -445,6 +450,52 @@ public partial class MainView : UserControl
             SettingsButton.Focus();
         }
     }
+
+    /// <summary>Keeps the keyboard inside the settings card: Tab and Shift+Tab loop between its
+    /// controls, and Escape closes it from any of them.</summary>
+    private void SettingsPanel_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            SetSettingsVisible(false);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.Tab)
+        {
+            return;
+        }
+
+        var stops = SettingsFocusStops();
+        if (stops.Count == 0)
+        {
+            return;
+        }
+
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control;
+        var index = focused == null ? -1 : stops.IndexOf(focused);
+        var step = (e.KeyModifiers & KeyModifiers.Shift) != 0 ? -1 : 1;
+
+        var next = index < 0
+            ? (step > 0 ? 0 : stops.Count - 1)
+            : ((index + step) % stops.Count + stops.Count) % stops.Count;
+
+        stops[next].Focus();
+        e.Handled = true;
+    }
+
+    /// <summary>The focus stops of the card in visual order, starting at the close button. Scroll
+    /// bars are skipped so Tab only lands on something that visibly shows the focus.</summary>
+    private List<Control> SettingsFocusStops() =>
+        SettingsPanel.GetVisualDescendants()
+            .OfType<Control>()
+            .Where(control => control.Focusable
+                              && control.IsEffectivelyVisible
+                              && control.IsEffectivelyEnabled
+                              && control is not ScrollViewer
+                              && control is not ScrollBar)
+            .ToList();
 
     /// <summary>True when the keyboard focus sits somewhere inside the settings card.</summary>
     private bool IsFocusInsideSettings() =>
