@@ -419,12 +419,51 @@ public partial class MainView : UserControl
 
     private void SetSettingsVisible(bool visible)
     {
+        if (visible == SettingsPanel.IsVisible)
+        {
+            return;
+        }
+
         if (visible)
         {
             UpdateSettingsPanelPlacement();
+            SettingsPanel.IsVisible = true;
+
+            // The card only owns a visual tree once it is visible, so its first setting takes the
+            // focus after the layout pass that placed it.
+            Dispatcher.UIThread.Post(FocusFirstSetting, DispatcherPriority.Loaded);
+            return;
         }
 
-        SettingsPanel.IsVisible = visible;
+        // Closing gives the focus back to the gear instead of leaving it on a hidden control,
+        // so Tab keeps working from the toolbar (and the gear stays reachable on Android).
+        var hadFocus = IsFocusInsideSettings();
+        SettingsPanel.IsVisible = false;
+
+        if (hadFocus && SettingsButton.IsEffectivelyVisible)
+        {
+            SettingsButton.Focus();
+        }
+    }
+
+    /// <summary>True when the keyboard focus sits somewhere inside the settings card.</summary>
+    private bool IsFocusInsideSettings() =>
+        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is Visual focused &&
+        IsInside(focused, SettingsPanel);
+
+    /// <summary>Moves the focus to the first control of the settings list, the natural entry
+    /// point for a keyboard or a D-pad.</summary>
+    private void FocusFirstSetting()
+    {
+        if (!SettingsPanel.IsVisible)
+        {
+            return;
+        }
+
+        SettingsStack.GetVisualDescendants()
+            .OfType<Control>()
+            .FirstOrDefault(control => control.Focusable && control.IsEffectivelyVisible && control.IsEffectivelyEnabled)
+            ?.Focus();
     }
 
     /// <summary>Fits the settings card into the current window: it sits just below the toolbar and
