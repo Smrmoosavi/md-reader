@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
@@ -23,26 +25,48 @@ namespace MdReader;
 
 /// <summary>One open document. Files picked through Android's document picker have no
 /// filesystem path, so the storage item is kept and its stream re-read on reload.</summary>
-public sealed class DocumentTab
+public sealed class DocumentTab : INotifyPropertyChanged
 {
-    public DocumentTab(string header, string? path, IStorageFile? file, string markdown, string? key = null)
+    private string _name;
+    private bool _dirty;
+
+    public DocumentTab(string name, string? path, IStorageFile? file, string markdown, string? key = null,
+        Encoding? encoding = null)
     {
-        Header = header;
+        _name = name;
         Path = path;
         File = file;
         Markdown = markdown;
         Key = key;
+        Encoding = encoding ?? new UTF8Encoding(false);
     }
 
     /// <summary>Identity of a document that has no filesystem path, such as a <c>content://</c>
     /// URI on Android. Bookmarks and the reading position are stored under it.</summary>
     public string? Key { get; }
 
-    public string Header { get; set; }
+    /// <summary>The file name, without the unsaved marker of <see cref="Header"/>.</summary>
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (_name == value)
+            {
+                return;
+            }
 
-    public string? Path { get; }
+            _name = value;
+            Raise(nameof(Header));
+        }
+    }
 
-    public IStorageFile? File { get; }
+    public string? Path { get; set; }
+
+    public IStorageFile? File { get; set; }
+
+    /// <summary>The encoding the file was read with, so saving keeps it as it was.</summary>
+    public Encoding Encoding { get; set; }
 
     public string Markdown { get; set; }
 
@@ -55,7 +79,38 @@ public sealed class DocumentTab
     /// <summary>Whether the saved reading position of this file was already applied in this session.</summary>
     public bool PositionRestored { get; set; }
 
-    public string ToolTip => Path ?? Header;
+    /// <summary>Edits that are not on disk yet; the tab title shows them as a dot.</summary>
+    public bool IsDirty
+    {
+        get => _dirty;
+        set
+        {
+            if (_dirty == value)
+            {
+                return;
+            }
+
+            _dirty = value;
+            Raise(nameof(Header));
+        }
+    }
+
+    /// <summary>The tab title, with a dot while the document has unsaved edits.</summary>
+    public string Header => _dirty ? _name + " •" : _name;
+
+    public string ToolTip => Path ?? _name;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void Raise(string property) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+}
+
+/// <summary>The reader's answer to closing a document that has unsaved edits.</summary>
+public enum UnsavedChoice
+{
+    Cancel,
+    Save,
+    Discard,
 }
 
 /// <summary>One row of the quick open panel: a file that can be reached by typing part of
@@ -157,7 +212,11 @@ public partial class MainView : UserControl
     private DispatcherTimer? _libraryTimer;
     private DispatcherTimer? _reloadTimer;
     private DispatcherTimer? _stateTimer;
+    private DispatcherTimer? _editorTimer;
     private string _pendingReloadPath = string.Empty;
+    private bool _editing;
+    private bool _suppressEditor;
+    private TaskCompletionSource<UnsavedChoice>? _unsavedPrompt;
 
     public MainView()
     {
@@ -321,6 +380,13 @@ public partial class MainView : UserControl
             return;
         }
 
+        // Reloading would throw away the buffer, so unsaved edits win over the file on disk.
+        if (_current.IsDirty)
+        {
+            ShowStatusError(Lang.T("UnsavedChanges"));
+            return;
+        }
+
         if (_current.Path != null)
         {
             await OpenPathAsync(_current.Path, replaceCurrent: true);
@@ -339,6 +405,20 @@ public partial class MainView : UserControl
         }
 
         e.Handled = true;
+    }
+
+    private void NewButton_Click(object? sender, RoutedEventArgs e) => NewDocument();
+
+    private void SaveButton_Click(object? sender, RoutedEventArgs e) => _ = SaveAsync();
+
+    private void EditToggle_Changed(object? sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        SetEditing(EditToggle.IsChecked == true);
     }
 
     private void DirectionCombo_Changed(object? sender, SelectionChangedEventArgs e)
@@ -627,6 +707,13 @@ public partial class MainView : UserControl
             return;
         }
 
+        if (UnsavedPanel.IsVisible && !IsInside(source, UnsavedPanel))
+        {
+            // A click outside the prompt cancels it: the document stays open and untouched.
+            ResolveUnsaved(UnsavedChoice.Cancel);
+            return;
+        }
+
         if (QuickOpenPanel.IsVisible && !IsInside(source, QuickOpenPanel))
         {
             CloseQuickOpen();
@@ -684,9 +771,32 @@ public partial class MainView : UserControl
             return;
         }
 
+        // While the unsaved prompt is open, only Escape acts on the document; every other key
+        // belongs to the focused button.
+        if (UnsavedPanel.IsVisible)
+        {
+            if (e.Key == Key.Escape)
+            {
+                ResolveUnsaved(UnsavedChoice.Cancel);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         var ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0;
 
-        if (ctrl && e.Key == Key.O)
+        if (ctrl && e.Key == Key.N)
+        {
+            NewDocument();
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.S && _current != null)
+        {
+            _ = SaveAsync();
+            e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.O)
         {
             OpenButton_Click(this, new RoutedEventArgs());
             e.Handled = true;
@@ -739,6 +849,11 @@ public partial class MainView : UserControl
         else if (e.Key == Key.Escape && QuickOpenPanel.IsVisible)
         {
             CloseQuickOpen();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && _editing)
+        {
+            SetEditing(false);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SettingsPanel.IsVisible)
@@ -1255,7 +1370,7 @@ public partial class MainView : UserControl
             return;
         }
 
-        var name = Path.GetFileNameWithoutExtension(_current.Path ?? _current.Header);
+        var name = Path.GetFileNameWithoutExtension(_current.Path ?? _current.Name);
         if (string.IsNullOrWhiteSpace(name))
         {
             name = "document";
@@ -1385,6 +1500,12 @@ public partial class MainView : UserControl
     {
         foreach (var tab in _tabs.Where(t => t.Path != null && t.Path.Equals(path, StringComparison.OrdinalIgnoreCase)).ToList())
         {
+            // A file with unsaved edits keeps the buffer the reader is working on.
+            if (tab.IsDirty)
+            {
+                continue;
+            }
+
             try
             {
                 var text = TextLoader.Read(System.IO.File.ReadAllBytes(path));
@@ -1424,13 +1545,19 @@ public partial class MainView : UserControl
             return;
         }
 
-        CommitDocument(pending.Name, null, null, TextLoader.Read(pending.Bytes), false, pending.Key);
+        var (text, encoding) = TextLoader.ReadWithEncoding(pending.Bytes);
+        CommitDocument(pending.Name, null, null, text, false, pending.Key, encoding);
     }
 
     // ---------- search ----------
 
     private void ShowSearch()
     {
+        if (_editing)
+        {
+            SetEditing(false);
+        }
+
         if (_current == null || _current.Markdown.Length == 0)
         {
             return;
@@ -1613,12 +1740,14 @@ public partial class MainView : UserControl
         }
 
         ReloadButton.IsEnabled = true;
-        DocumentTitleChanged?.Invoke(this, $"{tab.Header} — MD Reader {AppVersion}");
+        SaveButton.IsEnabled = true;
+        DocumentTitleChanged?.Invoke(this, $"{tab.Name} — MD Reader {AppVersion}");
 
         Refresh(preserveScroll: false);
         UpdateStatus();
         UpdateWatchers();
         RebuildMarks();
+        SyncEditorWithCurrent();
 
         // A file is reopened where the reader stopped, but only the first time in a session so a
         // deliberate jump is not undone by switching tabs.
@@ -1634,7 +1763,82 @@ public partial class MainView : UserControl
         }
     }
 
+    /// <summary>Closing a document with unsaved edits asks first: save, discard or stay. Nothing
+    /// is written or dropped until the reader picks one of the three buttons.</summary>
     private void CloseTab(DocumentTab tab)
+    {
+        if (tab.IsDirty)
+        {
+            _ = ConfirmAndCloseAsync(tab);
+            return;
+        }
+
+        CloseTabNow(tab);
+    }
+
+    private async Task ConfirmAndCloseAsync(DocumentTab tab)
+    {
+        var choice = await AskUnsavedAsync(tab);
+
+        // Cancel (or a second prompt while this one is open) leaves the tab, its buffer and its
+        // dirty marker exactly as they were.
+        if (choice == UnsavedChoice.Cancel)
+        {
+            return;
+        }
+
+        if (choice == UnsavedChoice.Discard)
+        {
+            tab.IsDirty = false;
+            CloseTabNow(tab);
+            return;
+        }
+
+        if (!ReferenceEquals(_current, tab))
+        {
+            SelectTab(tab);
+        }
+
+        // A cancelled save picker also keeps the tab open with its edits intact.
+        if (await SaveAsync())
+        {
+            CloseTabNow(tab);
+        }
+    }
+
+    /// <summary>Shows the three-way prompt and waits for the button. Only one prompt exists at a
+    /// time; a second request is treated as cancel so nothing can be lost by a stray click.</summary>
+    private Task<UnsavedChoice> AskUnsavedAsync(DocumentTab tab)
+    {
+        if (_unsavedPrompt != null)
+        {
+            return Task.FromResult(UnsavedChoice.Cancel);
+        }
+
+        UnsavedText.Text = Lang.F("UnsavedMessage", tab.Name);
+        UnsavedPanel.IsVisible = true;
+        _unsavedPrompt = new TaskCompletionSource<UnsavedChoice>();
+
+        // The safe choice has the focus, so Enter on a keyboard never discards work.
+        UnsavedSaveButton.Focus();
+        return _unsavedPrompt.Task;
+    }
+
+    private void UnsavedSave_Click(object? sender, RoutedEventArgs e) => ResolveUnsaved(UnsavedChoice.Save);
+
+    private void UnsavedDiscard_Click(object? sender, RoutedEventArgs e) => ResolveUnsaved(UnsavedChoice.Discard);
+
+    private void UnsavedCancel_Click(object? sender, RoutedEventArgs e) => ResolveUnsaved(UnsavedChoice.Cancel);
+
+    private void ResolveUnsaved(UnsavedChoice choice)
+    {
+        var prompt = _unsavedPrompt;
+        _unsavedPrompt = null;
+        UnsavedPanel.IsVisible = false;
+        prompt?.TrySetResult(choice);
+    }
+
+    private void CloseTabNow(DocumentTab tab)
     {
         var index = _tabs.IndexOf(tab);
         if (index < 0)
@@ -1655,6 +1859,8 @@ public partial class MainView : UserControl
         {
             DocTabs.IsVisible = false;
             ReloadButton.IsEnabled = false;
+            SaveButton.IsEnabled = false;
+            SetEditing(false);
             CloseSearch();
             ShowEmptyState();
             UpdateOutline();
@@ -1679,6 +1885,240 @@ public partial class MainView : UserControl
         }
     }
 
+    // ---------- editing ----------
+
+    private void NewDocument()
+    {
+        var tab = new DocumentTab(Lang.T("Untitled"), null, null, string.Empty);
+        _tabs.Add(tab);
+        DocTabs.IsVisible = _tabs.Count > 1;
+        SelectTab(tab);
+        SetEditing(true);
+        UpdateSession();
+        SaveSettings();
+    }
+
+    private void SelectTab(DocumentTab tab)
+    {
+        if (!ReferenceEquals(DocTabs.SelectedItem, tab))
+        {
+            _suppressTabEvents = true;
+            DocTabs.SelectedItem = tab;
+            _suppressTabEvents = false;
+        }
+
+        ActivateTab(tab);
+    }
+
+    /// <summary>Switches the document area between the rendered page and a plain Markdown editor.
+    /// Everything keeps using <see cref="DocumentTab.Markdown"/> as the live buffer, so search,
+    /// export and saving always see what is typed.</summary>
+    private void SetEditing(bool editing)
+    {
+        editing &= _current != null;
+
+        _editing = editing;
+
+        _suppressEvents = true;
+        EditToggle.IsChecked = editing;
+        _suppressEvents = false;
+
+        EditToggle.Content = Lang.T(editing ? "Preview" : "Edit");
+        ToolTip.SetTip(EditToggle, Lang.T(editing ? "PreviewTip" : "EditTip"));
+        SaveButton.IsEnabled = _current != null;
+
+        if (editing)
+        {
+            CloseSearch();
+
+            _suppressEditor = true;
+            EditorBox.Text = _current!.Markdown;
+            _suppressEditor = false;
+
+            EditorScroll.IsVisible = true;
+            DocScroll.IsVisible = false;
+            UpdateEditorLook();
+            EditorBox.Focus();
+            return;
+        }
+
+        EditorScroll.IsVisible = false;
+        DocScroll.IsVisible = true;
+        Refresh(preserveScroll: true);
+        UpdateStatus();
+    }
+
+    /// <summary>The editor follows the document's own direction, not only the interface language.</summary>
+    private void UpdateEditorLook()
+    {
+        var rtl = _current != null ? EffectiveRtl(_current.Markdown) : Lang.IsRtl;
+
+        EditorBox.FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+        EditorBox.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
+        EditorBox.FontSize = _options.BaseFontSize;
+
+        // The editor types in the same family the document is read with (the bundled Vazirmatn
+        // by default), so Persian shaping is the same in both modes.
+        if (!string.IsNullOrWhiteSpace(_options.FontFamilyName))
+        {
+            EditorBox.FontFamily = new FontFamily(_options.FontFamilyName);
+        }
+    }
+
+    private void EditorBox_TextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_suppressEditor || _current == null)
+        {
+            return;
+        }
+
+        var text = EditorBox.Text ?? string.Empty;
+        if (text == _current.Markdown)
+        {
+            return;
+        }
+
+        _current.Markdown = text;
+        _current.IsDirty = true;
+        _current.EmptyTitle = null;
+
+        // Words and reading time are counted from the buffer, but not on every keystroke of a
+        // long document.
+        _editorTimer?.Stop();
+        _editorTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _editorTimer.Tick += (_, _) =>
+        {
+            _editorTimer?.Stop();
+            UpdateStatus();
+        };
+        _editorTimer.Start();
+    }
+
+    /// <summary>Writes the buffer to its file, or asks for a destination when the document is new.
+    /// The encoding the file was read with is kept, so a Windows-1256 or UTF-16 file is not
+    /// silently rewritten as UTF-8.</summary>
+    private async Task<bool> SaveAsync(bool saveAs = false)
+    {
+        if (_current is not { } tab)
+        {
+            return false;
+        }
+
+        var text = tab.Markdown;
+
+        try
+        {
+            if (!saveAs && tab.Path is { Length: > 0 } path)
+            {
+                await WritePathAsync(path, text, tab.Encoding);
+            }
+            else if (!saveAs && tab.File is { } storageFile)
+            {
+                await WriteFileAsync(storageFile, text, tab.Encoding);
+            }
+            else if (!await SaveAsAsync(tab, text))
+            {
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatusError(Lang.F("SaveFailed", ex.Message));
+            return false;
+        }
+
+        tab.IsDirty = false;
+
+        if (tab.Path is { Length: > 0 } saved)
+        {
+            _settings.AddRecent(saved);
+        }
+
+        UpdateSession();
+        SaveSettings();
+        UpdateWatchers();
+        UpdateStatus();
+        FileText.Text = Lang.F("Saved", tab.Name);
+
+        if (!_editing)
+        {
+            Refresh(preserveScroll: true);
+        }
+
+        DocumentTitleChanged?.Invoke(this, $"{tab.Name} — MD Reader {AppVersion}");
+        return true;
+    }
+
+    private async Task<bool> SaveAsAsync(DocumentTab tab, string text)
+    {
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storage is not { CanSave: true })
+        {
+            ShowStatusError(Lang.T("SaveUnsupported"));
+            return false;
+        }
+
+        var suggested = tab.Name;
+        if (string.IsNullOrWhiteSpace(suggested) || suggested == Lang.T("Untitled"))
+        {
+            suggested = "note";
+        }
+
+        suggested = System.IO.Path.GetFileNameWithoutExtension(suggested) + ".md";
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = Lang.T("SaveAsTitle"),
+            SuggestedFileName = suggested,
+            DefaultExtension = "md",
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType(Lang.T("MarkdownFiles"))
+                {
+                    Patterns = new[] { "*.md", "*.markdown", "*.mdown", "*.mkd", "*.txt" },
+                    MimeTypes = new[] { "text/markdown", "text/plain" },
+                },
+            },
+        });
+
+        if (file == null)
+        {
+            return false;
+        }
+
+        await WriteFileAsync(file, text, tab.Encoding);
+
+        tab.Path = file.TryGetLocalPath();
+        tab.File = tab.Path == null ? file : null;
+        tab.Name = file.Name;
+        return true;
+    }
+
+    private static Task WritePathAsync(string path, string text, Encoding encoding) =>
+        System.IO.File.WriteAllBytesAsync(path, TextLoader.Encode(text, encoding));
+
+    private static async Task WriteFileAsync(IStorageFile file, string text, Encoding encoding)
+    {
+        await using var stream = await file.OpenWriteAsync();
+
+        // Rewriting a longer document must not leave the tail of the old one behind.
+        try
+        {
+            if (stream.CanSeek)
+            {
+                stream.SetLength(0);
+            }
+        }
+        catch (Exception)
+        {
+            // A stream that cannot be truncated is written as is.
+        }
+
+        var bytes = TextLoader.Encode(text, encoding);
+        await stream.WriteAsync(bytes.AsMemory(0, bytes.Length));
+        await stream.FlushAsync();
+    }
+
     // ---------- document ----------
 
     private async Task OpenFileAsync(IStorageFile file, bool replaceCurrent = false)
@@ -1686,8 +2126,9 @@ public partial class MainView : UserControl
         try
         {
             var bytes = await ReadAllBytesAsync(file);
-            CommitDocument(file.Name, file.TryGetLocalPath(), file, TextLoader.Read(bytes), replaceCurrent,
-                file.Path?.ToString());
+            var (text, encoding) = TextLoader.ReadWithEncoding(bytes);
+            CommitDocument(file.Name, file.TryGetLocalPath(), file, text, replaceCurrent,
+                file.Path?.ToString(), encoding);
         }
         catch (Exception ex)
         {
@@ -1701,7 +2142,8 @@ public partial class MainView : UserControl
         {
             var bytes = System.IO.File.ReadAllBytes(path);
             var file = await TryGetStorageFileAsync(path);
-            CommitDocument(System.IO.Path.GetFileName(path), path, file, TextLoader.Read(bytes), replaceCurrent);
+            var (text, encoding) = TextLoader.ReadWithEncoding(bytes);
+            CommitDocument(System.IO.Path.GetFileName(path), path, file, text, replaceCurrent, null, encoding);
         }
         catch (Exception ex)
         {
@@ -1731,19 +2173,21 @@ public partial class MainView : UserControl
     }
 
     private void CommitDocument(string name, string? path, IStorageFile? file, string markdown, bool replaceCurrent,
-        string? key = null)
+        string? key = null, Encoding? encoding = null)
     {
         var tab = replaceCurrent ? _current : null;
 
         if (tab == null)
         {
-            tab = new DocumentTab(name, path, file, markdown, key);
+            tab = new DocumentTab(name, path, file, markdown, key, encoding);
             _tabs.Add(tab);
         }
         else
         {
             tab.Markdown = markdown;
             tab.ScrollOffset = DocScroll.Offset.Y;
+            tab.Encoding = encoding ?? tab.Encoding;
+            tab.IsDirty = false;
         }
 
         DocTabs.IsVisible = _tabs.Count > 1;
@@ -1801,7 +2245,7 @@ public partial class MainView : UserControl
             // Reopening a session must not look like a fresh open in the title bar.
             DocumentTitleChanged?.Invoke(this, _current is null
                 ? $"MD Reader {AppVersion}"
-                : $"{_current.Header} — MD Reader {AppVersion}");
+                : $"{_current.Name} — MD Reader {AppVersion}");
         }
     }
 
@@ -1820,6 +2264,14 @@ public partial class MainView : UserControl
 
     private void Refresh(bool preserveScroll = true)
     {
+        if (_editing && _current != null)
+        {
+            // The editor owns the buffer; the page is rebuilt when editing ends.
+            UpdateStatus();
+            UpdateSearchStatus();
+            return;
+        }
+
         if (_current == null)
         {
             ShowEmptyState();
@@ -1869,6 +2321,20 @@ public partial class MainView : UserControl
 
         // Layout has to settle before headings know where they are on screen.
         Dispatcher.UIThread.Post(UpdateReadingPosition, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Keeps the editor in step when the current tab changes underneath it.</summary>
+    private void SyncEditorWithCurrent()
+    {
+        if (!_editing || _current == null)
+        {
+            return;
+        }
+
+        _suppressEditor = true;
+        EditorBox.Text = _current.Markdown;
+        _suppressEditor = false;
+        UpdateEditorLook();
     }
 
     /// <summary>Whether this document is drawn right to left: the preference may be a fixed
@@ -1949,7 +2415,11 @@ public partial class MainView : UserControl
         _settings.BaseFontSize = size;
         SaveSettings();
 
-        if (_current?.Rendered is { } rendered)
+        if (_editing)
+        {
+            EditorBox.FontSize = size;
+        }
+        else if (_current?.Rendered is { } rendered)
         {
             foreach (var apply in rendered.SizeAppliers)
             {
@@ -2038,7 +2508,9 @@ public partial class MainView : UserControl
 
         foreach (var (keys, description) in new (string, string)[]
                  {
+                     ("Ctrl + N", Lang.T("ShortcutNew")),
                      ("Ctrl + O", Lang.T("ShortcutOpen")),
+                     ("Ctrl + S", Lang.T("ShortcutSave")),
                      ("Ctrl + W", Lang.T("ShortcutClose")),
                      ("Ctrl + F", Lang.T("ShortcutSearch")),
                      ("Ctrl + E", Lang.T("ShortcutQuickOpen")),
@@ -2501,7 +2973,7 @@ public partial class MainView : UserControl
         foreach (var control in new Control[]
                  {
                      ToolbarPanel, DocTabs, SearchBarGrid, MarksDock, LibraryDock, OutlineDock,
-                     StatusPanel, OutlineList, SettingsStack, QuickOpenStack,
+                     StatusPanel, OutlineList, SettingsStack, QuickOpenStack, UnsavedStack,
                  })
         {
             control.FlowDirection = direction;
@@ -2551,6 +3023,7 @@ public partial class MainView : UserControl
 
         // Strings inside the toolbar are DynamicResources and follow automatically; the document
         // and the status bar are built in code, so they are rebuilt.
+        EditToggle.Content = Lang.T(_editing ? "Preview" : "Edit");
         FileText.Text = _current?.Path ?? Lang.T("NoFile");
         RebuildMarks();
         UpdateSearchStatus();
@@ -2651,7 +3124,7 @@ public partial class MainView : UserControl
             return;
         }
 
-        FileText.Text = _current.Path ?? _current.Header;
+        FileText.Text = _current.Path ?? _current.Name;
         var words = Regex.Matches(_current.Markdown, @"[\p{L}\p{N}]+").Count;
         var minutes = Math.Max(1, (int)Math.Round(words / 200.0));
 

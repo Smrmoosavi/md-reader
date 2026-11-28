@@ -5,6 +5,23 @@
     <!-- Toolbar -->
     <sys:String x:Key="Open">Open file</sys:String>
     <sys:String x:Key="Reload">Reload</sys:String>
+    <sys:String x:Key="New">New</sys:String>
+    <sys:String x:Key="NewTip">A new Markdown document (Ctrl + N)</sys:String>
+    <sys:String x:Key="Save">Save</sys:String>
+    <sys:String x:Key="SaveTip">Save the changes (Ctrl + S)</sys:String>
+    <sys:String x:Key="Edit">Edit</sys:String>
+    <sys:String x:Key="Preview">Preview</sys:String>
+    <sys:String x:Key="EditTip">Edit the Markdown text; switch back to Preview to see the page</sys:String>
+    <sys:String x:Key="PreviewTip">Show the rendered page</sys:String>
+    <sys:String x:Key="Untitled">Untitled</sys:String>
+    <sys:String x:Key="SaveAsTitle">Save as Markdown</sys:String>
+    <sys:String x:Key="Saved">Saved: {0}</sys:String>
+    <sys:String x:Key="SaveFailed">Could not save: {0}</sys:String>
+    <sys:String x:Key="UnsavedChanges">This document has unsaved changes; press Ctrl + S first.</sys:String>
+    <sys:String x:Key="UnsavedTitle">Unsaved changes</sys:String>
+    <sys:String x:Key="UnsavedMessage">“{0}” has unsaved changes. Save them before closing?</sys:String>
+    <sys:String x:Key="Discard">Discard</sys:String>
+    <sys:String x:Key="Cancel">Cancel</sys:String>
     <sys:String x:Key="Direction">Direction</sys:String>
     <sys:String x:Key="DirectionAuto">Automatic</sys:String>
     <sys:String x:Key="DirectionRtl">Right to left</sys:String>
@@ -95,6 +112,9 @@
     <sys:String x:Key="EmptyFileTitle">This file is empty.</sys:String>
     <sys:String x:Key="EmptyFileHint">The chosen file has no content.</sys:String>
     <sys:String x:Key="Recent">Recently opened</sys:String>
+    <sys:String x:Key="ShortcutNew">Create a new document</sys:String>
+    <sys:String x:Key="ShortcutSave">Save the changes</sys:String>
+    <sys:String x:Key="ShortcutEdit">Edit the text and return to the page</sys:String>
     <sys:String x:Key="ShortcutOpen">Open a file (new tab)</sys:String>
     <sys:String x:Key="ShortcutClose">Close the current tab</sys:String>
     <sys:String x:Key="ShortcutSearch">Search this document (Enter = next match)</sys:String>

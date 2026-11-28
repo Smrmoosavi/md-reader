@@ -5,6 +5,23 @@
     <!-- Toolbar -->
     <sys:String x:Key="Open">باز کردن فایل</sys:String>
     <sys:String x:Key="Reload">بازخوانی</sys:String>
+    <sys:String x:Key="New">جدید</sys:String>
+    <sys:String x:Key="NewTip">سند Markdown تازه (Ctrl + N)</sys:String>
+    <sys:String x:Key="Save">ذخیره</sys:String>
+    <sys:String x:Key="SaveTip">ذخیره‌ی تغییرات (Ctrl + S)</sys:String>
+    <sys:String x:Key="Edit">ویرایش</sys:String>
+    <sys:String x:Key="Preview">نمایش</sys:String>
+    <sys:String x:Key="EditTip">ویرایش متن Markdown؛ برای دیدن نتیجه به «نمایش» برگردید</sys:String>
+    <sys:String x:Key="PreviewTip">نمایش سند به‌صورت صفحه‌ی خوانده‌شده</sys:String>
+    <sys:String x:Key="Untitled">بدون نام</sys:String>
+    <sys:String x:Key="SaveAsTitle">ذخیره به‌صورت Markdown</sys:String>
+    <sys:String x:Key="Saved">ذخیره شد: {0}</sys:String>
+    <sys:String x:Key="SaveFailed">ذخیره نشد: {0}</sys:String>
+    <sys:String x:Key="UnsavedChanges">این سند تغییرات ذخیره‌نشده دارد؛ اول با Ctrl + S ذخیره کنید.</sys:String>
+    <sys:String x:Key="UnsavedTitle">تغییرات ذخیره‌نشده</sys:String>
+    <sys:String x:Key="UnsavedMessage">«{0}» تغییرات ذخیره‌نشده دارد. پیش از بستن، ذخیره شود؟</sys:String>
+    <sys:String x:Key="Discard">دور انداختن</sys:String>
+    <sys:String x:Key="Cancel">انصراف</sys:String>
     <sys:String x:Key="Direction">جهت</sys:String>
     <sys:String x:Key="DirectionAuto">خودکار</sys:String>
     <sys:String x:Key="DirectionRtl">راست به چپ</sys:String>
@@ -95,6 +112,9 @@
     <sys:String x:Key="EmptyFileTitle">این فایل خالی است.</sys:String>
     <sys:String x:Key="EmptyFileHint">فایل انتخاب‌شده هیچ محتوایی ندارد.</sys:String>
     <sys:String x:Key="Recent">اخیراً باز شده</sys:String>
+    <sys:String x:Key="ShortcutNew">ساخت سند تازه</sys:String>
+    <sys:String x:Key="ShortcutSave">ذخیره‌ی تغییرات</sys:String>
+    <sys:String x:Key="ShortcutEdit">ویرایش متن و بازگشت به نمایش</sys:String>
     <sys:String x:Key="ShortcutOpen">باز کردن فایل (تب جدید)</sys:String>
     <sys:String x:Key="ShortcutClose">بستن تب فعلی</sys:String>
     <sys:String x:Key="ShortcutSearch">جست‌وجو در سند (Enter = نتیجه بعدی)</sys:String>

@@ -114,10 +114,29 @@
             <WrapPanel x:Name="ToolbarPanel"
                        Orientation="Horizontal"
                        FlowDirection="RightToLeft">
+                <Button x:Name="NewButton"
+                        Classes="tool"
+                        Content="{DynamicResource New}"
+                        Click="NewButton_Click"
+                        AutomationProperties.Name="{DynamicResource NewTip}"
+                        ToolTip.Tip="{DynamicResource NewTip}" />
                 <Button x:Name="OpenButton"
                         Classes="tool"
                         Content="{DynamicResource Open}"
                         Click="OpenButton_Click" />
+                <Button x:Name="SaveButton"
+                        Classes="tool"
+                        Content="{DynamicResource Save}"
+                        Click="SaveButton_Click"
+                        IsEnabled="False"
+                        AutomationProperties.Name="{DynamicResource SaveTip}"
+                        ToolTip.Tip="{DynamicResource SaveTip}" />
+                <ToggleButton x:Name="EditToggle"
+                              Classes="tool"
+                              Content="{DynamicResource Edit}"
+                              IsCheckedChanged="EditToggle_Changed"
+                              AutomationProperties.Name="{DynamicResource EditTip}"
+                              ToolTip.Tip="{DynamicResource EditTip}" />
                 <Button x:Name="ReloadButton"
                         Classes="tool"
                         Content="{DynamicResource Reload}"
@@ -419,13 +438,31 @@
                 </DockPanel>
             </Border>
 
-            <ScrollViewer x:Name="DocScroll"
-                          Grid.Column="2"
-                          Background="{DynamicResource AppBackground}"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-                <Panel x:Name="DocHost" />
-            </ScrollViewer>
+            <Panel Grid.Column="2" Background="{DynamicResource AppBackground}">
+                <ScrollViewer x:Name="DocScroll"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <Panel x:Name="DocHost" />
+                </ScrollViewer>
+
+                <!-- The same document as plain Markdown; the reader and the editor share the
+                     buffer, so Ctrl + S, search and export always see what is typed. -->
+                <ScrollViewer x:Name="EditorScroll"
+                              IsVisible="False"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <TextBox x:Name="EditorBox"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             FontSize="16"
+                             Padding="28,20,28,40"
+                             MinHeight="400"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             VerticalContentAlignment="Top"
+                             TextChanged="EditorBox_TextChanged" />
+                </ScrollViewer>
+            </Panel>
 
             <Border x:Name="OutlinePanel"
                     Grid.Column="3"
@@ -606,6 +643,49 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
+        </Border>
+
+        <!-- Closing a document with unsaved edits asks first: nothing is written or dropped
+             until one of the three buttons is chosen. -->
+        <Border x:Name="UnsavedPanel"
+                Grid.Row="0"
+                Grid.RowSpan="5"
+                Width="380"
+                MaxWidth="380"
+                Margin="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsVisible="False"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16,14"
+                BoxShadow="0 10 26 0 #40000000">
+            <StackPanel x:Name="UnsavedStack" Spacing="10">
+                <TextBlock Text="{DynamicResource UnsavedTitle}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="UnsavedText"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource AppTextMuted}" />
+                <StackPanel Orientation="Horizontal"
+                            Spacing="8"
+                            HorizontalAlignment="Right">
+                    <Button x:Name="UnsavedSaveButton"
+                            Classes="tool"
+                            Content="{DynamicResource Save}"
+                            Click="UnsavedSave_Click" />
+                    <Button Classes="tool"
+                            Content="{DynamicResource Discard}"
+                            Click="UnsavedDiscard_Click" />
+                    <Button Classes="tool"
+                            Content="{DynamicResource Cancel}"
+                            Click="UnsavedCancel_Click" />
+                </StackPanel>
+            </StackPanel>
         </Border>
 
         <!-- Quick open: type part of a file name and press Enter. It sits above the document
