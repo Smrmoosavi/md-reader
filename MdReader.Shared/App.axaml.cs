@@ -17,6 +17,10 @@ public partial class App : Application
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
+    /// <summary>The view of the running app. A platform that leaves from outside the view (the
+    /// Android back button) uses it to ask about unsaved edits before the app goes away.</summary>
+    public static MainView? ActiveView { get; private set; }
+
     public override void OnFrameworkInitializationCompleted()
     {
         var settings = AppSettings.Load();
@@ -34,13 +38,22 @@ public partial class App : Application
 
             // Android can host several activities, so it asks for a view factory instead.
             case IActivityApplicationLifetime activity:
-                activity.MainViewFactory = () => new MainView();
+                activity.MainViewFactory = () =>
+                {
+                    var view = new MainView();
+                    ActiveView = view;
+                    return view;
+                };
                 break;
 
             // iOS and the browser host a single view instead of a window.
             case ISingleViewApplicationLifetime singleView:
-                singleView.MainView = new MainView();
+            {
+                var view = new MainView();
+                singleView.MainView = view;
+                ActiveView = view;
                 break;
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -55,6 +68,7 @@ public partial class App : Application
     private static Window CreateDesktopWindow(string[] args)
     {
         var view = new MainView();
+        ActiveView = view;
 
         var window = new Window
         {
@@ -73,6 +87,25 @@ public partial class App : Application
 
         view.DocumentTitleChanged += (_, title) => window.Title = title;
         window.Opened += (_, _) => view.ApplyStartArguments(args);
+
+        // Closing the window exits the app, so it goes through the same prompt as closing a tab:
+        // the window only closes once the view has no unsaved edits left.
+        var closeConfirmed = false;
+        window.Closing += async (_, e) =>
+        {
+            if (closeConfirmed || !view.HasUnsavedTabs)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+
+            if (await view.ConfirmExitAsync())
+            {
+                closeConfirmed = true;
+                window.Close();
+            }
+        };
 
         return window;
     }

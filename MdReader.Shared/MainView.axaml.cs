@@ -1806,6 +1806,54 @@ public partial class MainView : UserControl
         }
     }
 
+    /// <summary>Whether any open tab has edits that are not on disk yet.</summary>
+    public bool HasUnsavedTabs => _tabs.Any(tab => tab.IsDirty);
+
+    /// <summary>
+    /// The exit path behind the window's close button and Android's back button: every dirty tab
+    /// gets the same three-way prompt, and the caller only closes when this returns true. A save
+    /// picker that is cancelled also returns false, so the edits stay where they are.
+    /// </summary>
+    public async Task<bool> ConfirmExitAsync()
+    {
+        // A prompt that is already on screen asks the same question, so the new request cancels it
+        // instead of deciding anything behind the reader's back.
+        if (_unsavedPrompt != null)
+        {
+            ResolveUnsaved(UnsavedChoice.Cancel);
+            return false;
+        }
+
+        foreach (var tab in _tabs.Where(tab => tab.IsDirty).ToList())
+        {
+            var choice = await AskUnsavedAsync(tab);
+
+            if (choice == UnsavedChoice.Cancel)
+            {
+                return false;
+            }
+
+            if (choice == UnsavedChoice.Discard)
+            {
+                tab.IsDirty = false;
+                continue;
+            }
+
+            if (!ReferenceEquals(_current, tab))
+            {
+                SelectTab(tab);
+            }
+
+            if (!await SaveAsync())
+            {
+                return false;
+            }
+        }
+
+        SaveCurrentState();
+        return true;
+    }
+
     /// <summary>Shows the three-way prompt and waits for the button. Only one prompt exists at a
     /// time; a second request is treated as cancel so nothing can be lost by a stray click.</summary>
     private Task<UnsavedChoice> AskUnsavedAsync(DocumentTab tab)

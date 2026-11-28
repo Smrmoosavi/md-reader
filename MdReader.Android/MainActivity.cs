@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -62,6 +63,31 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnNewIntent(intent);
         Deliver(intent);
+    }
+
+#pragma warning disable CS0672, CS0618 // Activity.OnBackPressed is deprecated on API 33, but it is
+    // still the entry point behind the dispatcher and the one every supported Android version has.
+    /// <summary>Back leaves the app, so it asks about unsaved edits first: the same card as the
+    /// window's close button, and the activity only finishes when the view agrees.</summary>
+    protected override void OnBackPressed()
+    {
+        var view = MdReader.App.ActiveView;
+        if (view != null && view.HasUnsavedTabs)
+        {
+            _ = ConfirmExitAsync(view);
+            return;
+        }
+
+        base.OnBackPressed();
+    }
+#pragma warning restore CS0672, CS0618
+
+    private async Task ConfirmExitAsync(MdReader.MainView view)
+    {
+        if (await view.ConfirmExitAsync())
+        {
+            RunOnUiThread(Finish);
+        }
     }
 
     /// <summary>Reads the shared document and hands the bytes to the shared view.</summary>
