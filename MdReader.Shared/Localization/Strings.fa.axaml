@@ -25,6 +25,11 @@
     <sys:String x:Key="MarksTip">نشانک، یادداشت و ادامه‌ی مطالعه</sys:String>
     <sys:String x:Key="Settings">تنظیمات</sys:String>
     <sys:String x:Key="CloseSettings">بستن تنظیمات</sys:String>
+    <sys:String x:Key="CloseSearch">بستن جست‌وجو</sys:String>
+    <sys:String x:Key="QuickOpen">باز کردن سریع</sys:String>
+    <sys:String x:Key="QuickOpenPlaceholder">بخشی از نام فایل… (Ctrl + E)</sys:String>
+    <sys:String x:Key="QuickOpenEmpty">فایلی پیدا نشد. برای فهرست کردن پوشه، کتابخانه را باز کنید.</sys:String>
+    <sys:String x:Key="CloseQuickOpen">بستن باز کردن سریع</sys:String>
     <sys:String x:Key="Theme">تم</sys:String>
     <sys:String x:Key="ThemeLight">روشن</sys:String>
     <sys:String x:Key="ThemeDark">تیره</sys:String>
@@ -66,6 +71,7 @@
     <sys:String x:Key="ResultCount">{0} نتیجه</sys:String>
     <sys:String x:Key="Indexing">در حال فهرست‌کردن… {0} فایل</sys:String>
     <sys:String x:Key="LibraryAndroidHint">پوشه‌ی انتخاب‌شده تا پایان این نشست باز می‌ماند.</sys:String>
+    <sys:String x:Key="LibraryRemembered">دسترسی به این پوشه برای نشست‌های بعد هم نگه داشته می‌شود.</sys:String>
 
     <!-- Marks -->
     <sys:String x:Key="MarksTitle">نشانک‌ها و یادداشت‌ها</sys:String>
@@ -99,6 +105,8 @@
     <sys:String x:Key="ShortcutReset">بازگشت فونت به اندازه پیش‌فرض</sys:String>
     <sys:String x:Key="ShortcutFocus">حالت تمرکز</sys:String>
     <sys:String x:Key="ShortcutSettings">باز و بسته کردن تنظیمات</sys:String>
+    <sys:String x:Key="ShortcutQuickOpen">باز کردن سریع فایل</sys:String>
+    <sys:String x:Key="ShortcutPanes">جابه‌جایی بین پانل‌ها</sys:String>
 
     <!-- Messages -->
     <sys:String x:Key="Copied">متن به‌صورت غنی کپی شد.</sys:String>
@@ -116,5 +124,6 @@
     <sys:String x:Key="MarkdownFiles">فایل‌های Markdown</sys:String>
     <sys:String x:Key="TextFiles">فایل متنی</sys:String>
     <sys:String x:Key="FolderPickerTitle">انتخاب پوشه‌ی یادداشت‌ها</sys:String>
+    <sys:String x:Key="LinkedMissing">فایل پیوندشده پیدا نشد: {0}</sys:String>
 
 </ResourceDictionary>

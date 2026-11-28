@@ -113,6 +113,31 @@ public sealed class LibraryIndex
 
     public int Count => _entries.Count;
 
+    /// <summary>Every indexed file, in the order the folder was walked.</summary>
+    public IReadOnlyList<LibraryFile> Files => _entries.ConvertAll(entry => entry.File);
+
+    /// <summary>The indexed file behind a relative link such as <c>notes/idea.md</c>, or null.</summary>
+    public LibraryFile? Find(string relative)
+    {
+        var wanted = relative.Replace('\\', '/').Trim();
+        if (wanted.StartsWith("./", StringComparison.Ordinal))
+        {
+            wanted = wanted[2..];
+        }
+
+        foreach (var entry in _entries)
+        {
+            var candidate = entry.File.Relative.Replace('\\', '/');
+            if (candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase) ||
+                candidate.EndsWith("/" + wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                return entry.File;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The local folder that was indexed, if the library is path based.</summary>
     public string? RootPath { get; private set; }
 

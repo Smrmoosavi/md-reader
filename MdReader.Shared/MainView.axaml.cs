@@ -25,13 +25,18 @@ namespace MdReader;
 /// filesystem path, so the storage item is kept and its stream re-read on reload.</summary>
 public sealed class DocumentTab
 {
-    public DocumentTab(string header, string? path, IStorageFile? file, string markdown)
+    public DocumentTab(string header, string? path, IStorageFile? file, string markdown, string? key = null)
     {
         Header = header;
         Path = path;
         File = file;
         Markdown = markdown;
+        Key = key;
     }
+
+    /// <summary>Identity of a document that has no filesystem path, such as a <c>content://</c>
+    /// URI on Android. Bookmarks and the reading position are stored under it.</summary>
+    public string? Key { get; }
 
     public string Header { get; set; }
 
@@ -51,6 +56,29 @@ public sealed class DocumentTab
     public bool PositionRestored { get; set; }
 
     public string ToolTip => Path ?? Header;
+}
+
+/// <summary>One row of the quick open panel: a file that can be reached by typing part of
+/// its name or path.</summary>
+public sealed class QuickEntry
+{
+    public QuickEntry(string header, string detail, string? path, IStorageFile? file)
+    {
+        Header = header;
+        Detail = detail;
+        Path = path;
+        File = file;
+    }
+
+    public string Header { get; }
+
+    public string Detail { get; }
+
+    public string? Path { get; }
+
+    public IStorageFile? File { get; }
+
+    public override string ToString() => Header;
 }
 
 /// <summary>A font entry of the toolbar picker. <see cref="Name"/> is what gets saved in the
@@ -110,6 +138,7 @@ public partial class MainView : UserControl
     private readonly ObservableCollection<DocumentTab> _tabs = new();
     private readonly ObservableCollection<LibraryItem> _libraryItems = new();
     private readonly ObservableCollection<DocumentMark> _marks = new();
+    private readonly ObservableCollection<QuickEntry> _quickItems = new();
     private readonly LibraryIndex _library = new();
     private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly AppSettings _settings = AppSettings.Load();
@@ -120,6 +149,7 @@ public partial class MainView : UserControl
     private bool _suppressSearch;
     private bool _updatingPosition;
     private bool _focusMode;
+    private bool _remoteLibraryRestored;
 
     private string _searchQuery = string.Empty;
     private int _matchIndex;
@@ -139,8 +169,10 @@ public partial class MainView : UserControl
         DocTabs.ItemsSource = _tabs;
         LibraryList.ItemsSource = _libraryItems;
         MarksList.ItemsSource = _marks;
+        QuickOpenList.ItemsSource = _quickItems;
 
         _options.NavigateToAnchor = NavigateToAnchor;
+        _options.OpenDocument = OpenLinkedDocument;
         _options.BaseFontSize = FontSizes.Contains(_settings.BaseFontSize) ? _settings.BaseFontSize : 16;
         _options.MaxContentWidth = WidthFor(_settings.Width);
         _options.Palette = MarkdownPalette.For(AppTheme.IsDark);
@@ -187,6 +219,10 @@ public partial class MainView : UserControl
 
         RestoreLibrary();
         ConsumeExternalOpen();
+
+        // A folder that lives behind a storage URI can only be reopened once the view has a top
+        // level to ask for its storage provider.
+        AttachedToVisualTree += (_, _) => _ = RestoreRemoteLibraryAsync();
     }
 
     /// <summary>Raised when the open document changes; the desktop window uses it for its title bar.</summary>
@@ -586,7 +622,17 @@ public partial class MainView : UserControl
     /// popup. The gear is left alone so its own click still toggles the card.</summary>
     private void View_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!SettingsPanel.IsVisible || e.Source is not Visual source)
+        if (e.Source is not Visual source)
+        {
+            return;
+        }
+
+        if (QuickOpenPanel.IsVisible && !IsInside(source, QuickOpenPanel))
+        {
+            CloseQuickOpen();
+        }
+
+        if (!SettingsPanel.IsVisible)
         {
             return;
         }
@@ -655,6 +701,16 @@ public partial class MainView : UserControl
             ShowSearch();
             e.Handled = true;
         }
+        else if (ctrl && e.Key == Key.E)
+        {
+            ShowQuickOpen();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F6)
+        {
+            CyclePane();
+            e.Handled = true;
+        }
         else if (ctrl && e.Key == Key.P && _current != null)
         {
             ExportPdf_Click(this, new RoutedEventArgs());
@@ -678,6 +734,11 @@ public partial class MainView : UserControl
         else if (ctrl && e.Key == Key.OemComma)
         {
             SetSettingsVisible(!SettingsPanel.IsVisible);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && QuickOpenPanel.IsVisible)
+        {
+            CloseQuickOpen();
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && SettingsPanel.IsVisible)
@@ -750,7 +811,16 @@ public partial class MainView : UserControl
     // ---------- marks ----------
 
     private DocumentState CurrentState =>
-        ReadingStateStore.Get(_current?.Path);
+        ReadingStateStore.Get(StateKeyOf(_current));
+
+    /// <summary>The identity the reading state is stored under: the path when there is one,
+    /// otherwise the storage URI of the document (or the name of a shared document).</summary>
+    private static string? StateKeyOf(DocumentTab? tab) =>
+        tab == null
+            ? null
+            : tab.Path is { Length: > 0 } path
+                ? path
+                : tab.File?.Path?.ToString() ?? tab.Key;
 
     private void AddBookmark_Click(object? sender, RoutedEventArgs e)
     {
@@ -866,14 +936,14 @@ public partial class MainView : UserControl
 
     private void SaveCurrentState()
     {
-        if (_current is not { Path: { Length: > 0 } path })
+        if (StateKeyOf(_current) is not { Length: > 0 } key)
         {
             return;
         }
 
-        var state = ReadingStateStore.Get(path);
+        var state = ReadingStateStore.Get(key);
         state.Position = DocScroll.Offset.Y;
-        ReadingStateStore.Save(path, state);
+        ReadingStateStore.Save(key, state);
     }
 
     // ---------- library ----------
@@ -915,8 +985,20 @@ public partial class MainView : UserControl
         }
 
         // A folder without a filesystem path (Android's storage access framework) is read through
-        // the storage API; it cannot be remembered after the app closes, so no path is saved.
+        // the storage API. Its URI is kept, and the platform is asked to keep the read grant, so
+        // the folder can be reopened in the next session when the provider allows it.
         _settings.LibraryPath = null;
+        _settings.LibraryUri = folder.Path?.ToString();
+
+        if (Uri.TryCreate(_settings.LibraryUri, UriKind.Absolute, out var folderUri))
+        {
+            RemoteAccess.PersistFolder?.Invoke(folderUri);
+        }
+        else
+        {
+            _settings.LibraryUri = null;
+        }
+
         SaveSettings();
         LibraryPathText.Text = folder.Name;
         LibraryStatusText.Text = Lang.T("Indexing").Replace("{0}", "…", StringComparison.Ordinal);
@@ -927,7 +1009,9 @@ public partial class MainView : UserControl
                 Dispatcher.UIThread.Post(() =>
                     LibraryStatusText.Text = Lang.F("Indexing", count)));
             RefreshLibraryList();
-            LibraryStatusText.Text = Lang.T("LibraryAndroidHint");
+            LibraryStatusText.Text = _settings.LibraryUri == null
+                ? Lang.T("LibraryAndroidHint")
+                : Lang.T("LibraryRemembered");
         }
         catch (Exception ex)
         {
@@ -955,6 +1039,58 @@ public partial class MainView : UserControl
         if (!string.IsNullOrEmpty(_settings.LibraryPath) && Directory.Exists(_settings.LibraryPath))
         {
             LoadLibrary(_settings.LibraryPath!);
+        }
+    }
+
+    /// <summary>Reopens the library folder of the last session when it lives behind a storage URI
+    /// (Android). A grant that the provider did not keep simply leaves the library empty.</summary>
+    private async Task RestoreRemoteLibraryAsync()
+    {
+        if (_remoteLibraryRestored)
+        {
+            return;
+        }
+
+        _remoteLibraryRestored = true;
+
+        if (_library.Count > 0 || _settings.LibraryUri is not { Length: > 0 } uri)
+        {
+            return;
+        }
+
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var folderUri))
+        {
+            return;
+        }
+
+        try
+        {
+            var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+            if (storage == null)
+            {
+                return;
+            }
+
+            var folder = await storage.TryGetFolderFromPathAsync(folderUri);
+            if (folder == null)
+            {
+                // The permission is gone, so the next session starts without a folder.
+                _settings.LibraryUri = null;
+                SaveSettings();
+                return;
+            }
+
+            await _library.LoadFolderAsync(folder, count =>
+                Dispatcher.UIThread.Post(() =>
+                    LibraryStatusText.Text = Lang.F("Indexing", count)));
+
+            LibraryPathText.Text = folder.Name;
+            RefreshLibraryList();
+            LibraryStatusText.Text = Lang.T("LibraryRemembered");
+        }
+        catch (Exception)
+        {
+            // A revoked or unreadable grant leaves the library as it was.
         }
     }
 
@@ -1288,7 +1424,7 @@ public partial class MainView : UserControl
             return;
         }
 
-        CommitDocument(pending.Name, null, null, TextLoader.Read(pending.Bytes), false);
+        CommitDocument(pending.Name, null, null, TextLoader.Read(pending.Bytes), false, pending.Key);
     }
 
     // ---------- search ----------
@@ -1490,9 +1626,10 @@ public partial class MainView : UserControl
         {
             tab.PositionRestored = true;
 
-            if (ReadingStateStore.HasPosition(ReadingStateStore.Get(tab.Path)))
+            var key = StateKeyOf(tab);
+            if (ReadingStateStore.HasPosition(ReadingStateStore.Get(key)))
             {
-                RestoreScroll(ReadingStateStore.Get(tab.Path).Position);
+                RestoreScroll(ReadingStateStore.Get(key).Position);
             }
         }
     }
@@ -1549,7 +1686,8 @@ public partial class MainView : UserControl
         try
         {
             var bytes = await ReadAllBytesAsync(file);
-            CommitDocument(file.Name, file.TryGetLocalPath(), file, TextLoader.Read(bytes), replaceCurrent);
+            CommitDocument(file.Name, file.TryGetLocalPath(), file, TextLoader.Read(bytes), replaceCurrent,
+                file.Path?.ToString());
         }
         catch (Exception ex)
         {
@@ -1592,13 +1730,14 @@ public partial class MainView : UserControl
         }
     }
 
-    private void CommitDocument(string name, string? path, IStorageFile? file, string markdown, bool replaceCurrent)
+    private void CommitDocument(string name, string? path, IStorageFile? file, string markdown, bool replaceCurrent,
+        string? key = null)
     {
         var tab = replaceCurrent ? _current : null;
 
         if (tab == null)
         {
-            tab = new DocumentTab(name, path, file, markdown);
+            tab = new DocumentTab(name, path, file, markdown, key);
             _tabs.Add(tab);
         }
         else
@@ -1902,6 +2041,8 @@ public partial class MainView : UserControl
                      ("Ctrl + O", Lang.T("ShortcutOpen")),
                      ("Ctrl + W", Lang.T("ShortcutClose")),
                      ("Ctrl + F", Lang.T("ShortcutSearch")),
+                     ("Ctrl + E", Lang.T("ShortcutQuickOpen")),
+                     ("F6", Lang.T("ShortcutPanes")),
                      ("Ctrl + ,", Lang.T("ShortcutSettings")),
                      ("Ctrl + D", Lang.T("AddBookmark")),
                      ("F11", Lang.T("ShortcutFocus")),
@@ -1986,6 +2127,314 @@ public partial class MainView : UserControl
         }
     }
 
+    // ---------- quick open ----------
+
+    private void ShowQuickOpen()
+    {
+        SetSettingsVisible(false);
+        CloseSearch();
+
+        QuickOpenPanel.IsVisible = true;
+        QuickOpenBox.Text = string.Empty;
+        FillQuickOpen(string.Empty);
+        QuickOpenBox.Focus();
+    }
+
+    private void CloseQuickOpen()
+    {
+        if (!QuickOpenPanel.IsVisible)
+        {
+            return;
+        }
+
+        QuickOpenPanel.IsVisible = false;
+        QuickOpenBox.Text = string.Empty;
+        _quickItems.Clear();
+    }
+
+    private void QuickOpenBox_TextChanged(object? sender, TextChangedEventArgs e) =>
+        FillQuickOpen(QuickOpenBox.Text ?? string.Empty);
+
+    private void QuickOpenBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                OpenQuickEntry(_quickItems.FirstOrDefault());
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                CloseQuickOpen();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void QuickOpenClose_Click(object? sender, RoutedEventArgs e) => CloseQuickOpen();
+
+    private void QuickItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is QuickEntry entry)
+        {
+            _ = OpenQuickEntryAsync(entry);
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>Enter opens the best match; rows are sorted by score, so the first one is it.</summary>
+    private void OpenQuickEntry(QuickEntry? entry)
+    {
+        if (entry != null)
+        {
+            _ = OpenQuickEntryAsync(entry);
+        }
+    }
+
+    private async Task OpenQuickEntryAsync(QuickEntry entry)
+    {
+        CloseQuickOpen();
+
+        if (entry.Path is { Length: > 0 } path)
+        {
+            await OpenPathAsync(path);
+        }
+        else if (entry.File is { } file)
+        {
+            await OpenFileAsync(file);
+        }
+    }
+
+    /// <summary>Lists the recently opened files and the library, filtered by what is typed. The
+    /// query matches letters in order, so "rdme" still finds "README.md".</summary>
+    private void FillQuickOpen(string query)
+    {
+        _quickItems.Clear();
+        query = query.Trim();
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var found = new List<(QuickEntry Entry, int Score)>();
+
+        void Consider(QuickEntry entry, string text)
+        {
+            var score = QuickScore(text, query);
+            if (score >= 0)
+            {
+                found.Add((entry, score));
+            }
+        }
+
+        foreach (var path in _settings.Recent)
+        {
+            if (!System.IO.File.Exists(path) || !seen.Add(path))
+            {
+                continue;
+            }
+
+            Consider(new QuickEntry(System.IO.Path.GetFileName(path), path, path, null),
+                System.IO.Path.GetFileName(path) + " " + path);
+        }
+
+        foreach (var file in _library.Files)
+        {
+            var key = file.Path ?? file.File?.Path?.ToString() ?? file.Relative;
+            if (!seen.Add(key))
+            {
+                continue;
+            }
+
+            Consider(new QuickEntry(file.Name, file.Relative, file.Path, file.File), file.Relative);
+        }
+
+        foreach (var (entry, _) in found.OrderByDescending(pair => pair.Score).Take(60))
+        {
+            _quickItems.Add(entry);
+        }
+
+        QuickOpenEmpty.IsVisible = _quickItems.Count == 0;
+    }
+
+    /// <summary>0 for an empty query; -1 when the query is not a subsequence of the text.</summary>
+    private static int QuickScore(string text, string query)
+    {
+        if (query.Length == 0)
+        {
+            return 0;
+        }
+
+        var score = 0;
+        var matched = 0;
+        var previous = -2;
+
+        for (var i = 0; i < text.Length && matched < query.Length; i++)
+        {
+            if (char.ToUpperInvariant(text[i]) != char.ToUpperInvariant(query[matched]))
+            {
+                continue;
+            }
+
+            score += 2;
+            if (i == previous + 1)
+            {
+                score += 5;
+            }
+
+            if (i == 0 || text[i - 1] is ' ' or '/' or '\\' or '-' or '_' or '.')
+            {
+                score += 8;
+            }
+
+            previous = i;
+            matched++;
+        }
+
+        if (matched < query.Length)
+        {
+            return -1;
+        }
+
+        if (text.StartsWith(query, StringComparison.CurrentCultureIgnoreCase))
+        {
+            score += 30;
+        }
+
+        return score - Math.Min(text.Length, 50);
+    }
+
+    // ---------- panes ----------
+
+    /// <summary>F6 walks the visible panes: bookmarks, library, the document and the outline,
+    /// ending on the toolbar, so every region is reachable without a mouse.</summary>
+    private void CyclePane()
+    {
+        var panes = new List<Control>();
+        if (MarksPanel.IsVisible) panes.Add(MarksPanel);
+        if (LibraryPanel.IsVisible) panes.Add(LibraryPanel);
+        panes.Add(DocScroll);
+        if (OutlinePanel.IsVisible) panes.Add(OutlinePanel);
+        if (ToolbarBorder.IsVisible) panes.Add(ToolbarBorder);
+
+        if (panes.Count == 0)
+        {
+            return;
+        }
+
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Visual;
+        var index = -1;
+
+        if (focused != null)
+        {
+            for (var i = 0; i < panes.Count; i++)
+            {
+                if (IsInside(focused, panes[i]))
+                {
+                    index = i;
+                    break;
+                }
+            }
+        }
+
+        var next = panes[(index + 1) % panes.Count];
+        var target = next.GetVisualDescendants()
+            .OfType<Control>()
+            .FirstOrDefault(control => control.Focusable
+                                       && control.IsEffectivelyVisible
+                                       && control.IsEffectivelyEnabled
+                                       && control is not ScrollBar);
+
+        if (target != null)
+        {
+            target.Focus();
+        }
+        else
+        {
+            next.Focus();
+        }
+    }
+
+    // ---------- linked documents ----------
+
+    /// <summary>Opens a relative link such as <c>next.md</c> or <c>notes/idea.md#part</c>. The
+    /// file is resolved against the current document first, then against the library (a document
+    /// opened from a storage URI has no folder of its own).</summary>
+    private async void OpenLinkedDocument(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        var link = url.Trim();
+        string? anchor = null;
+
+        var hash = link.IndexOf('#');
+        if (hash >= 0)
+        {
+            anchor = link[(hash + 1)..];
+            link = link[..hash];
+        }
+
+        link = link.Split('?')[0];
+
+        if (link.Length == 0)
+        {
+            if (!string.IsNullOrEmpty(anchor))
+            {
+                NavigateToAnchor(anchor);
+            }
+
+            return;
+        }
+
+        if (_current?.Path is { Length: > 0 } currentPath)
+        {
+            try
+            {
+                var resolved = System.IO.Path.GetFullPath(
+                    System.IO.Path.Combine(System.IO.Path.GetDirectoryName(currentPath) ?? string.Empty,
+                        Uri.UnescapeDataString(link)));
+
+                if (System.IO.File.Exists(resolved))
+                {
+                    await OpenPathAsync(resolved);
+                    JumpToAnchor(anchor);
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // A malformed relative path falls through to the library lookup.
+            }
+        }
+
+        if (_library.Find(link) is { } file)
+        {
+            if (file.Path is { Length: > 0 } path)
+            {
+                await OpenPathAsync(path);
+            }
+            else if (file.File is { } storageFile)
+            {
+                await OpenFileAsync(storageFile);
+            }
+
+            JumpToAnchor(anchor);
+            return;
+        }
+
+        ShowStatusError(Lang.F("LinkedMissing", link));
+    }
+
+    private void JumpToAnchor(string? anchor)
+    {
+        if (string.IsNullOrWhiteSpace(anchor))
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => NavigateToAnchor(anchor), DispatcherPriority.Loaded);
+    }
+
     // ---------- pickers and appearance ----------
 
     private void LoadChoices()
@@ -2052,7 +2501,7 @@ public partial class MainView : UserControl
         foreach (var control in new Control[]
                  {
                      ToolbarPanel, DocTabs, SearchBarGrid, MarksDock, LibraryDock, OutlineDock,
-                     StatusPanel, OutlineList, SettingsStack,
+                     StatusPanel, OutlineList, SettingsStack, QuickOpenStack,
                  })
         {
             control.FlowDirection = direction;

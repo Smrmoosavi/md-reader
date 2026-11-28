@@ -4,7 +4,7 @@
        Android head (ApplicationDisplayVersion) and the Windows installer all read it from here,
        and the release workflow writes it into the release name. -->
   <PropertyGroup>
-    <Version>1.4.4</Version>
+    <Version>1.5.0</Version>
   </PropertyGroup>
 
 </Project>

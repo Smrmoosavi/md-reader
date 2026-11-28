@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace MdReader;
@@ -43,7 +44,9 @@ public sealed class DocumentState
 /// <summary>
 /// Stores <see cref="DocumentState"/> in a small sidecar file next to the document
 /// (<c>notes.md</c> gets <c>notes.md.mdreader</c>) as <c>key=value</c> lines. The document itself is
-/// never modified, so the file stays compatible with every other Markdown tool.
+/// never modified, so the file stays compatible with every other Markdown tool. Documents without
+/// a filesystem path (Android's storage access framework hands out <c>content://</c> URIs) get the
+/// same file in the application data folder, keyed by that URI.
 /// </summary>
 public static class ReadingStateStore
 {
@@ -86,6 +89,18 @@ public static class ReadingStateStore
 
         try
         {
+            var sidecar = SidecarOf(path);
+            if (sidecar == null)
+            {
+                return;
+            }
+
+            var folder = Path.GetDirectoryName(sidecar);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                Directory.CreateDirectory(folder);
+            }
+
             var builder = new StringBuilder();
             builder.AppendLine("position=" + state.Position.ToString("0.##", CultureInfo.InvariantCulture));
 
@@ -97,12 +112,42 @@ public static class ReadingStateStore
                 builder.AppendLine($"mark={mark.Kind}|{mark.Offset.ToString("0.##", CultureInfo.InvariantCulture)}|{text}");
             }
 
-            File.WriteAllText(path + Suffix, builder.ToString());
+            File.WriteAllText(sidecar, builder.ToString());
         }
         catch (Exception)
         {
             // Bookmarks are best-effort: a read-only folder must not break reading.
         }
+    }
+
+    /// <summary>Where the state of <paramref name="key"/> lives: next to a real file, or in the
+    /// per-user data folder for documents that only have a storage URI.</summary>
+    private static string? SidecarOf(string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return null;
+        }
+
+        if (!key.Contains("://", StringComparison.Ordinal))
+        {
+            return key + Suffix;
+        }
+
+        var folder = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrEmpty(folder))
+        {
+            folder = Path.GetTempPath();
+        }
+
+        return Path.Combine(folder, "MD Reader", "state", Fingerprint(key) + Suffix);
+    }
+
+    /// <summary>A short, stable file name for a long URI, so the folder stays flat.</summary>
+    private static string Fingerprint(string key)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(hash, 0, 10).ToLowerInvariant();
     }
 
     private static DocumentState Load(string path)
@@ -111,8 +156,8 @@ public static class ReadingStateStore
 
         try
         {
-            var sidecar = path + Suffix;
-            if (!File.Exists(sidecar))
+            var sidecar = SidecarOf(path);
+            if (sidecar == null || !File.Exists(sidecar))
             {
                 return state;
             }

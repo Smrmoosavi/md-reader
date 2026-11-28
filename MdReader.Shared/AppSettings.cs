@@ -46,6 +46,10 @@ public sealed class AppSettings
     /// <summary>The folder shown in the library panel.</summary>
     public string? LibraryPath { get; set; }
 
+    /// <summary>A storage URI of the library folder, for platforms without filesystem paths
+    /// (Android's storage access framework). It is only kept while the permission lasts.</summary>
+    public string? LibraryUri { get; set; }
+
     /// <summary>Most recently opened files, newest first.</summary>
     public List<string> Recent { get; } = new();
 
@@ -135,6 +139,9 @@ public sealed class AppSettings
                     case "library":
                         settings.LibraryPath = value.Length == 0 ? null : value;
                         break;
+                    case "libraryuri":
+                        settings.LibraryUri = value.Length == 0 ? null : value;
+                        break;
 
                     // Both lists use one repeated key per entry, so no escaping is needed and a
                     // path may contain any character a filesystem allows.
@@ -176,6 +183,7 @@ public sealed class AppSettings
             builder.AppendLine($"outline={(OutlineVisible ? 1 : 0)}");
             builder.AppendLine($"autoreload={(AutoReload ? 1 : 0)}");
             builder.AppendLine($"library={LibraryPath}");
+            builder.AppendLine($"libraryuri={LibraryUri}");
 
             foreach (var recent in Recent)
             {

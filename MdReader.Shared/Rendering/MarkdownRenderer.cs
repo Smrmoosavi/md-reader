@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Avalonia;
@@ -11,6 +12,8 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Markdig;
+using Markdig.Extensions.Footnotes;
+using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
 using Markdig.Renderers.Html;
@@ -34,6 +37,10 @@ public sealed class MarkdownRenderOptions
 
     /// <summary>Called for a <c>#anchor</c> link inside the document.</summary>
     public Action<string>? NavigateToAnchor { get; set; }
+
+    /// <summary>Called for a relative link that points at another Markdown file, so it opens in a
+    /// tab of the reader instead of being treated as a web link.</summary>
+    public Action<string>? OpenDocument { get; set; }
 
     /// <summary>Folder of the document; relative image paths are resolved against it.</summary>
     public string? DocumentDirectory { get; set; }
@@ -179,6 +186,9 @@ public static class MarkdownRenderer
             case ParagraphBlock paragraph:
                 AddParagraph(paragraph, target, context, forceBold, compact);
                 break;
+            case MathBlock math:
+                AddMathBlock(math, target, context);
+                break;
             case FencedCodeBlock code:
                 AddCodeBlock(code, target, context);
                 break;
@@ -201,6 +211,9 @@ public static class MarkdownRenderer
                 break;
             case MdTable table:
                 AddTable(table, target, context, depth);
+                break;
+            case FootnoteGroup footnotes:
+                AddFootnotes(footnotes, target, context);
                 break;
             case HtmlBlock html:
                 AddPlainBlock(ExtractSource(context.Source, html), target, context);
@@ -505,6 +518,149 @@ public static class MarkdownRenderer
         }
     }
 
+    /// <summary>
+    /// Draws the footnotes collected by Markdig at the end of the document: a rule, then one row
+    /// per footnote with its number. Each row is registered as an anchor so the reference in the
+    /// text can jump to it and the back-arrow can return.
+    /// </summary>
+    private static void AddFootnotes(FootnoteGroup group, Panel target, RenderContext context)
+    {
+        var footnotes = group.OfType<Footnote>().Where(footnote => footnote.Order > 0).ToList();
+        if (footnotes.Count == 0)
+        {
+            return;
+        }
+
+        target.Children.Add(new Border
+        {
+            Height = 1,
+            Background = context.Palette.Rule,
+            Margin = new Thickness(0, 26, 0, 12),
+        });
+
+        foreach (var footnote in footnotes)
+        {
+            var content = new StackPanel();
+            foreach (var child in footnote)
+            {
+                AddBlock(child, content, context, 0, compact: true);
+            }
+
+            var number = new TextBlock
+            {
+                Text = footnote.Order.ToString(CultureInfo.CurrentCulture) + ".",
+                FontSize = context.BaseSize * 0.78,
+                Foreground = context.Palette.Muted,
+                FlowDirection = context.Direction,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 0, 8, 0),
+            };
+
+            context.Result.SizeAppliers.Add(size => number.FontSize = size * 0.78);
+
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            row.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            row.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+            Grid.SetColumn(number, 0);
+            Grid.SetColumn(content, 1);
+            row.Children.Add(content);
+            row.Children.Add(number);
+
+            target.Children.Add(row);
+            RegisterAnchor(context.Result, FootnoteAnchor(footnote.Order), row);
+        }
+    }
+
+    /// <summary>The reference marker (<c>1</c>) or, inside a footnote, the arrow back to it.</summary>
+    private static void AddFootnoteLink(FootnoteLink link, InlineCollection target, RenderContext context)
+    {
+        var back = link.IsBackLink;
+        var marker = new TextBlock
+        {
+            Text = back ? "↩" : link.Index > 0 ? link.Index.ToString(CultureInfo.CurrentCulture) : "?",
+            FontSize = context.BaseSize * 0.7,
+            Foreground = context.Palette.Link,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            FlowDirection = FlowDirection.LeftToRight,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(back ? 4 : 1, 0, 1, 0),
+        };
+
+        context.Result.SizeAppliers.Add(size => marker.FontSize = size * 0.7);
+
+        var anchor = back ? FootnoteReferenceAnchor(link.Index) : FootnoteAnchor(link.Index);
+        marker.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            context.Options.NavigateToAnchor?.Invoke(anchor);
+        };
+
+        if (!back && link.Index > 0)
+        {
+            RegisterAnchor(context.Result, FootnoteReferenceAnchor(link.Index), marker);
+        }
+
+        target.Add(new InlineUIContainer { Child = marker });
+    }
+
+    private static string FootnoteAnchor(int index) => $"fn-{index.ToString(CultureInfo.CurrentCulture)}";
+
+    private static string FootnoteReferenceAnchor(int index) => $"fnref-{index.ToString(CultureInfo.CurrentCulture)}";
+
+    /// <summary>
+    /// Math is displayed as its source in a monospaced block, centred and read left to right.
+    /// The reader has no TeX typesetter, so a formula stays editable text instead of vanishing.
+    /// </summary>
+    private static void AddMathBlock(MathBlock block, Panel target, RenderContext context)
+    {
+        var text = ExtractSource(context.Source, block).Trim();
+        if (text.StartsWith("$$", StringComparison.Ordinal))
+        {
+            text = text[2..];
+        }
+
+        if (text.EndsWith("$$", StringComparison.Ordinal))
+        {
+            text = text[..^2];
+        }
+
+        text = text.Trim();
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        const double factor = 0.95;
+        var content = new SelectableTextBlock
+        {
+            Text = text,
+            FontFamily = new FontFamily(MonoFontFamily),
+            FontSize = context.BaseSize * factor,
+            Foreground = context.Palette.Text,
+            TextWrapping = TextWrapping.Wrap,
+            FlowDirection = FlowDirection.LeftToRight,
+            TextAlignment = TextAlignment.Center,
+            LineHeight = context.BaseSize * factor * 1.5,
+        };
+
+        context.Result.SizeAppliers.Add(size =>
+        {
+            content.FontSize = size * factor;
+            content.LineHeight = size * factor * 1.5;
+        });
+
+        target.Children.Add(new Border
+        {
+            Child = content,
+            Background = context.Palette.CodeBackground,
+            BorderBrush = context.Palette.CodeBorder,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 8, 12, 8),
+            Margin = new Thickness(0, 8, 0, 14),
+        });
+    }
+
     private static void AddList(ListBlock block, Panel target, RenderContext context, int depth)
     {
         // The document panel is mirrored as a whole in RTL mode, so margins, borders and column
@@ -693,6 +849,14 @@ public static class MarkdownRenderer
                     AddRun(target, host, code.Content ?? string.Empty, style.Derive(code: true), context);
                     break;
 
+                case FootnoteLink footnote:
+                    AddFootnoteLink(footnote, target, context);
+                    break;
+
+                case MathInline math:
+                    AddRun(target, host, math.Content.ToString(), style.Derive(code: true), context);
+                    break;
+
                 case LinkInline link when link.IsImage:
                     if (!AddImage(link, target, context))
                     {
@@ -850,6 +1014,18 @@ public static class MarkdownRenderer
             {
                 e.Handled = true;
                 OpenExternal(link, uri);
+            };
+        }
+        else if (IsDocumentLink(url, out var document))
+        {
+            // "other.md" (or "notes/next.md#part") is another document of the same folder; the
+            // reader opens it in its own tab instead of leaving the click dead.
+            link.TextDecorations = TextDecorations.Underline;
+            ToolTip.SetTip(link, document);
+            link.PointerPressed += (_, e) =>
+            {
+                e.Handled = true;
+                context.Options.OpenDocument?.Invoke(document);
             };
         }
 
@@ -1011,6 +1187,45 @@ public static class MarkdownRenderer
 
     private static bool IsExternalScheme(Uri uri) =>
         uri.Scheme is "http" or "https" or "mailto";
+
+    /// <summary>Whether a link points at another document of the same folder, such as
+    /// <c>next.md</c>, <c>notes/idea.txt</c> or <c>next.md#part</c>.</summary>
+    private static bool IsDocumentLink(string? url, out string document)
+    {
+        document = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var trimmed = url.Trim();
+        if (trimmed.StartsWith('#'))
+        {
+            return false;
+        }
+
+        // A real URI (web, mail, file) is never resolved against the document folder.
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+        {
+            return false;
+        }
+
+        var path = trimmed.Split('#')[0].Split('?')[0];
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        var extension = System.IO.Path.GetExtension(path);
+        if (Array.IndexOf(LibraryScanner.Extensions, extension.ToLowerInvariant()) < 0)
+        {
+            return false;
+        }
+
+        document = trimmed;
+        return true;
+    }
 
     private static async void OpenExternal(Control source, Uri uri)
     {

@@ -11,12 +11,17 @@
 
   <ItemGroup>
     <AvaloniaResource Include="assets\**" />
+
+    <!-- The PDF engine reads fonts from the application folder, so the bundled Vazirmatn is
+         also shipped as a plain file next to the executable. -->
+    <None Update="assets\fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.6" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
     <PackageReference Include="Markdig" Version="1.6.0" />
+    <PackageReference Include="QuestPDF" Version="2026.9.2" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 

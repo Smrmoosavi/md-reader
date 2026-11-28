@@ -54,6 +54,50 @@ public static class ImageLoader
 
     public static void ClearCache() => Cache.Clear();
 
+    /// <summary>The raw bytes of the same image, for exporters that embed the file itself (PDF)
+    /// instead of drawing an Avalonia bitmap.</summary>
+    public static byte[]? TryLoadBytes(string? url, string? baseDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return null;
+        }
+
+        var source = url.Trim();
+
+        try
+        {
+            if (source.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                var comma = source.IndexOf(',');
+                if (comma < 0)
+                {
+                    return null;
+                }
+
+                var meta = source[5..comma];
+                var payload = source[(comma + 1)..];
+
+                return meta.Contains("base64", StringComparison.OrdinalIgnoreCase)
+                    ? Convert.FromBase64String(payload)
+                    : Convert.FromBase64String(Uri.UnescapeDataString(payload));
+            }
+
+            if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var path = ResolvePath(source, baseDirectory);
+            return path != null && File.Exists(path) ? File.ReadAllBytes(path) : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     private static string? ResolvePath(string source, string? baseDirectory)
     {
         if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.IsFile)

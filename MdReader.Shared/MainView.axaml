@@ -129,10 +129,12 @@
                 <Button Classes="tool"
                         Content="A+"
                         Click="ZoomIn_Click"
+                        AutomationProperties.Name="{DynamicResource ZoomInTip}"
                         ToolTip.Tip="{DynamicResource ZoomInTip}" />
                 <Button Classes="tool"
                         Content="A−"
                         Click="ZoomOut_Click"
+                        AutomationProperties.Name="{DynamicResource ZoomOutTip}"
                         ToolTip.Tip="{DynamicResource ZoomOutTip}" />
 
                 <Rectangle Width="1" Height="22" Margin="8,4,14,10" Fill="{DynamicResource PanelBorder}" VerticalAlignment="Center" />
@@ -179,6 +181,7 @@
                         Content="⚙"
                         FontSize="15"
                         Click="SettingsButton_Click"
+                        AutomationProperties.Name="{DynamicResource Settings}"
                         ToolTip.Tip="{DynamicResource Settings}" />
             </WrapPanel>
         </Border>
@@ -201,6 +204,7 @@
                         <Button Classes="tabclose"
                                 Content="✕"
                                 Click="CloseTab_Click"
+                                AutomationProperties.Name="{DynamicResource CloseTab}"
                                 ToolTip.Tip="{DynamicResource CloseTab}" />
                     </StackPanel>
                 </DataTemplate>
@@ -242,7 +246,8 @@
                         Classes="tool"
                         Content="✕"
                         Click="SearchClose_Click"
-                        ToolTip.Tip="{DynamicResource SearchHint}" />
+                        AutomationProperties.Name="{DynamicResource CloseSearch}"
+                        ToolTip.Tip="{DynamicResource CloseSearch}" />
             </Grid>
         </Border>
 
@@ -313,6 +318,7 @@
                                                 Grid.Column="0"
                                                 Content="✕"
                                                 Click="MarkDelete_Click"
+                                                AutomationProperties.Name="{DynamicResource DeleteMark}"
                                                 ToolTip.Tip="{DynamicResource DeleteMark}" />
                                     </Grid>
                                 </DataTemplate>
@@ -515,6 +521,7 @@
                             Classes="tabclose"
                             Content="✕"
                             Click="SettingsClose_Click"
+                            AutomationProperties.Name="{DynamicResource CloseSettings}"
                             ToolTip.Tip="{DynamicResource CloseSettings}" />
                 </Grid>
 
@@ -599,6 +606,68 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
+        </Border>
+
+        <!-- Quick open: type part of a file name and press Enter. It sits above the document
+             like the settings card, so it works the same on a phone and in a window. -->
+        <Border x:Name="QuickOpenPanel"
+                Grid.Row="0"
+                Grid.RowSpan="5"
+                MaxWidth="560"
+                Margin="24,64,24,0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top"
+                IsVisible="False"
+                Background="{DynamicResource PanelBackground}"
+                BorderBrush="{DynamicResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12"
+                BoxShadow="0 8 22 0 #40000000">
+            <StackPanel x:Name="QuickOpenStack" Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox x:Name="QuickOpenBox"
+                             MinHeight="32"
+                             VerticalContentAlignment="Center"
+                             PlaceholderText="{DynamicResource QuickOpenPlaceholder}"
+                             TextChanged="QuickOpenBox_TextChanged"
+                             KeyDown="QuickOpenBox_KeyDown" />
+                    <Button Grid.Column="1"
+                            Classes="tabclose"
+                            Content="✕"
+                            Margin="6,0,0,0"
+                            Click="QuickOpenClose_Click"
+                            AutomationProperties.Name="{DynamicResource CloseQuickOpen}"
+                            ToolTip.Tip="{DynamicResource CloseQuickOpen}" />
+                </Grid>
+                <TextBlock x:Name="QuickOpenEmpty"
+                           Text="{DynamicResource QuickOpenEmpty}"
+                           FontSize="12"
+                           Foreground="{DynamicResource AppTextSoft}"
+                           Margin="4,0"
+                           IsVisible="False" />
+                <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="QuickOpenList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:QuickEntry">
+                                <Button Classes="library" Click="QuickItem_Click" ToolTip.Tip="{Binding Detail}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Header}"
+                                                   FontSize="12"
+                                                   TextWrapping="NoWrap"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Detail}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource AppTextMuted}"
+                                                   TextWrapping="NoWrap"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
         </Border>
     </Grid>
 </UserControl>

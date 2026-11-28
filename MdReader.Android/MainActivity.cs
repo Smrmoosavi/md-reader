@@ -35,7 +35,27 @@ public class MainActivity : AvaloniaMainActivity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+
+        // The library folder is picked through the storage access framework; asking Android to
+        // keep the grant means the folder still opens in the next session.
+        RemoteAccess.PersistFolder = Persist;
         Deliver(Intent);
+    }
+
+    private void Persist(System.Uri uri)
+    {
+        try
+        {
+            var androidUri = Android.Net.Uri.Parse(uri.ToString());
+            if (androidUri != null && ContentResolver != null)
+            {
+                ContentResolver.TakePersistableUriPermission(androidUri, ActivityFlags.GrantReadUriPermission);
+            }
+        }
+        catch (Exception)
+        {
+            // A provider that does not grant persistable access keeps the old behaviour.
+        }
     }
 
     protected override void OnNewIntent(Intent? intent)
@@ -63,7 +83,7 @@ public class MainActivity : AvaloniaMainActivity
 
             using var buffer = new MemoryStream();
             stream.CopyTo(buffer);
-            ExternalOpen.Deliver(uri.LastPathSegment ?? uri.ToString() ?? "document.md", buffer.ToArray());
+            ExternalOpen.Deliver(uri.LastPathSegment ?? uri.ToString() ?? "document.md", buffer.ToArray(), uri.ToString());
         }
         catch (Exception)
         {
