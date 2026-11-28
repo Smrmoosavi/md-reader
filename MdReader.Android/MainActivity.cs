@@ -68,8 +68,9 @@ public class MainActivity : AvaloniaMainActivity
 #pragma warning disable CS0672, CS0618 // Activity.OnBackPressed is deprecated on API 33, but it is
     // still the entry point behind the dispatcher and the one every supported Android version has.
     /// <summary>Back leaves the app, so it asks about unsaved edits first: the same card as the
-    /// window's close button, and the activity only finishes when the view agrees.</summary>
-    protected override void OnBackPressed()
+    /// window's close button, and the activity only finishes when the view agrees. Avalonia's own
+    /// activity declares this member public, so the override has to match.</summary>
+    public override void OnBackPressed()
     {
         var view = MdReader.App.ActiveView;
         if (view != null && view.HasUnsavedTabs)
